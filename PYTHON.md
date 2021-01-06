@@ -13,7 +13,70 @@
 $ yum install -y git curl gcc make patch gdbm-devel openssl-devel sqlite-devel readline-devel zlib-devel bzip-devel
 ```
 
-### PIP
+
+
+### Pyenv
+
+#### Pyenv 目录
+
+```bahs
+~/.pyenv/
+```
+
+#### 安装其他Python版本
+
+```bash
+# 备注：如果下载太慢 直接去官网下载源码包(.tar.xz) 保存到Pyenv目录的 cache目录(需要新建)下
+pyenv install <version> [-vvv]
+```
+
+```bash
+# ~/.pyenv/cahce  缓存文件 存放目录 需要手动创建
+mkdir -p ~/.pyenv/cache && wget https://www.python.org/ftp/python/3.6.12/Python-3.6.12.tar.xz -P  ~/.pyenv/cache
+pyenv install 3.6.12 -vvv
+```
+
+#### 更换Python版本
+
+  - golbal  设置全局Python version 不建议使用
+
+    ```bash
+    # 全局设置python版本为：3.6.12
+    pyenv global 3.6.12  
+    ```
+
+  - shell(session)  仅对当前会话(session|terminal)有影响   
+
+    ```bash
+    # 当前会话：3.6.12
+    pyenv shell 3.6.12  
+    ```
+
+  - local  将Pyehon version绑定目录 子目录同样有效 离开目录失效
+
+    ```bash
+    # 绑定当前目录 影响子目录
+    # 把目录当成项目 每个项目可以使用不同版本
+pyenv local 3.6.12
+    
+    # 这样使用 虽然每个项目(不同目录) 使用了不同版本 但是如果2个项目使用同一个版本 
+    # 一个需要装django 1.8 另一个需要django 2.2 就会产生冲突
+    
+    # 解决方案：使用虚拟环境
+    ```
+    
+
+#### 虚拟环境
+
+```bash
+pyenv virtualenv 3.6.12 virtualenv-3612  # 根据需要的版本 创建一个虚拟环境
+cd $project_dir
+pyenv local virtualenv-3612  # 为当前项目 设置虚拟环境
+```
+
+
+
+### PIP配置
 
 [Aliyun源](http://mirrors.aliyun.com/)
 
