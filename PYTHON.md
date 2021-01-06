@@ -38,25 +38,25 @@ pyenv install 3.6.12 -vvv
 
 #### 更换Python版本
 
-  - golbal  设置全局Python version 不建议使用
+  - golbal 
 
     ```bash
-    # 全局设置python版本为：3.6.12
+    # 全局设置python版本为：3.6.12 不建议使用
     pyenv global 3.6.12  
     ```
 
-  - shell(session)  仅对当前会话(session|terminal)有影响   
+  - shell
 
     ```bash
-    # 当前会话：3.6.12
+    # 当前会话：3.6.12 仅对当前会话(shell|session|terminal)有影响   
     pyenv shell 3.6.12  
     ```
 
-  - local  将Pyehon version绑定目录 子目录同样有效 离开目录失效
+  - local  
 
     ```bash
-    # 绑定当前目录 影响子目录
     # 把目录当成项目 每个项目可以使用不同版本
+    # 将Pyehon version绑定目录 子目录同样有效 离开目录失效
 pyenv local 3.6.12
     
     # 这样使用 虽然每个项目(不同目录) 使用了不同版本 但是如果2个项目使用同一个版本 
@@ -161,6 +161,8 @@ r'\n\tabcd'
 ```
 
 ## 面向对象进阶
+
+[魔术方法参考](https://pyzh.readthedocs.io/en/latest/python-magic-methods-guide.html)
 
 ### 实例化 \__new__
 
