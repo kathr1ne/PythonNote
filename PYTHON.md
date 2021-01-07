@@ -67,8 +67,6 @@ pyenv install 3.6.12 -vvv
 
     
 
-
-
 #### 虚拟环境
 
 ```bash
@@ -167,6 +165,8 @@ r'\n\tabcd'
 
 [魔术方法参考](https://pyzh.readthedocs.io/en/latest/python-magic-methods-guide.html)
 
+**魔术方法 一般使用要小心 弄不好就会递归**
+
 ### 实例化 \__new__
 
 ```python
@@ -185,6 +185,7 @@ class A:
     	return super().__new___(cls)
         # 实例化不能自己做 交给根基类实现 调根基类的__new__方法 
         # 传参cls 根据类型 制造实例
+        # 没有绑定效果 永远是 静态方法
     
     def __init__(self):  # 实例化第二阶段：初始化
 		pass
@@ -212,61 +213,134 @@ class A:
         pass
 ```
 
-**魔术方法 一般使用要小心 弄不好就会递归**
-
 ### 可视化
+
+#### \__str__ 
+
+实例的字符串表达
 
 ```python
 class A:
-    def __init__(self):
+   def __init__(self):
         self.x = x
         self.y = y
         
-	def __str__(self):  # 字符串表达 string
+    # 该实例的字符串表达 string
+  	def __str__(self):  
         return "<A {}, {}, {}>".format(self.x, self.y, self(hex(id(self)))
-        
-class B(list):
-    pass
-
-# print 实例化后的对象 表现不同
-# 继承 mro => object.__str__
-print(A(5, 7))  # <__main__.A object at 0x00000xxx> 通用方式表达  
-print(B())  # []    human-readable 符号性的表达
 ```
 
-**作用方法  print\str\format**
+#### \__repr__ 
 
-```python
+实例的非字符串表达
+
+  ```python
+class A:
+    # 该实例的 非字符串表达形式
+    def __repr__(self):
+         return 'repr '  
+                                         
+    __str__ = __repr__  # 常用
+          
+class B(list):
+    pass
+  
+# print 实例化后的对象 表现不同
+# 继承 mro => object.__str__ 基类定义一个即可
+print(A(5, 7))  # <__main__.A object at 0x00000xxx> 通用方式表达  
+print(B())  # []    human-readable 符号性的表达
+  ```
+
+  **作用方法影响**
+
+ print\str\format
+
+  ```python
 t = A(5, 7)
-
+  
 # str\print\format 直接作用实例 调用__str__ 方法
 print(t)
 print(str(t))
 print('{}'.format(t))
-
+  
 # 下面不是直接作用实例 不调用__str__ 转而调用__repr__
-print((t,))
-print([t])
+print((t,))  # 作用在元组上
+print([t])   # 作用在列表上
 print(str([t]))
 print({t})
-
+  
 # result: 直接作用
-<A 5, 7, addr=0x1f482195d88>
-<A 5, 7, addr=0x1f482195d88>
-<A 5, 7, addr=0x1f482195d88>
-
+>>> <A 5, 7, addr=0x1f482195d88>
+>>> <A 5, 7, addr=0x1f482195d88>
+>>> <A 5, 7, addr=0x1f482195d88>
+  
 # result: 不是直接作用 间接作用调用__repr__
-(<__main__.A object at 0x000001F482195D88>,)
-[<__main__.A object at 0x000001F482195D88>]
-[<__main__.A object at 0x000001F482195D88>]
-{<__main__.A object at 0x000001F482195D88>}
-```
+>>> (<__main__.A object at 0x000001F482195D88>,)
+>>> [<__main__.A object at 0x000001F482195D88>]
+>>> [<__main__.A object at 0x000001F482195D88>]
+>>> {<__main__.A object at 0x000001F482195D88>}
+  ```
+
+  ```python
+# print\str\format 三个函数
+  - 直接作用对象上 调用 对象.__str__  => 尝试调用 __repr__ => object.__repr__  # 先继承(除object) 没有调用self.__repr__
+  - 间接作用对象上 调用 对象.__repr__ => object.__repr__
+    
+repr(对象) => 对象.__repr__ => ...mro... => obj.__repr__
+  ```
+
+**Path类 例子**
 
 ```python
-# print\str\format 三个函数
-  - 直接作用对象上 调用 对象.__str__  => 尝试调用 __repr__ => object.__repr__ 
-  - 间接作用对象上 调用 对象.__repr__ => object.__repr__
-  
-repr(对象) => 对象.__repr__ => ...mro... => obj.__repr__
+from pathlib import Path
+
+p1 = Path('/etc/sysconfig/network')
+print(p1)    # print直接作用到p1上 __str__
+print([p1])  # print作用到列表上   __repr__
+
+# open 拿到的是个Path对象 不是字符串
+# 小心 可能会报错 这里不报错时因为：pathlib是Python内建函数 很多都已经能够使用Path实例 (内部会做判断)
+with open(p1) as f: 
+    pass
+
+# 第三方函数(文件对象 or 路径字符串) -- OK
+# 第三方函数(str(p1))  p1.__str__  返回路径字符串 -- OK
+# 第三方函数(p1) == 第三方函数(repr(p1))  类型不对 -- Not OK
+
+# 下面结果说明 Path类的 __str__ 和 __repr__ 不一样
+>>> '\etc\sysconfig\network'
+>>> [WindowsPath('/etc/sysconfig/network')]
 ```
+
+#### \__bytes__
+
+```python
+print(bytes(t))  # 报错 没有object兜底
+>>> TypeError: cannot convert 'A' object to bytes
+
+class A:
+    # 该实例的 非字符串表达形式
+    def __repr__(self):
+        return 'repr '
+
+    __str__ = __repr__  # 常用
+
+    def __bytes__(self):  # bytes(t)
+        return str(self).encode()  
+        # str(self) => str(t) => t.__str__
+
+t = A()
+print(bytes(t))
+>>> b'repr '
+```
+
+#### 可视化总结
+
+| 方法       | 意义                                                         |
+| ---------- | ------------------------------------------------------------ |
+| \__str__   | str()\format()\print()函数调用 需要返回对象的字符串表达 <br>如果没有定义 就去调用\__repr__方法返回字符串表达 <br>如果\__repr__没有定义 就直接返回对象的内存地址信息 |
+| \__repr__  | 内建函数repr()对一个对象获取**字符串**表达 <br>调用\__repr__方法返回字符串表达 如果 \__repr__也没有定义 就直接返回object的定义(显示内存地址信息) |
+| \__bytes__ | butes()函数调用 返回一个对象的bytes表达 即返回bytes对象      |
+
+
 
