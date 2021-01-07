@@ -30,6 +30,7 @@ $ yum install -y git curl gcc make patch gdbm-devel openssl-devel sqlite-devel r
 pyenv install <version> [-vvv]
 ```
 
+#### 缓存文件
 ```bash
 # ~/.pyenv/cahce  缓存文件 存放目录 需要手动创建
 mkdir -p ~/.pyenv/cache && wget https://www.python.org/ftp/python/3.6.12/Python-3.6.12.tar.xz -P  ~/.pyenv/cache
@@ -167,7 +168,7 @@ r'\n\tabcd'
 
 **魔术方法 一般使用要小心 弄不好就会递归**
 
-### 实例化 \__new__
+###  \__new__
 
 ```python
 # __new__ 作用
@@ -341,6 +342,82 @@ print(bytes(t))
 | \__str__   | str()\format()\print()函数调用 需要返回对象的字符串表达 <br>如果没有定义 就去调用\__repr__方法返回字符串表达 <br>如果\__repr__没有定义 就直接返回对象的内存地址信息 |
 | \__repr__  | 内建函数repr()对一个对象获取**字符串**表达 <br>调用\__repr__方法返回字符串表达 如果 \__repr__也没有定义 就直接返回object的定义(显示内存地址信息) |
 | \__bytes__ | butes()函数调用 返回一个对象的bytes表达 即返回bytes对象      |
+
+### \__bool__
+
+```python
+class A:
+    pass
+
+if A:  # 类对象 默认为真 => if bool(A)
+    print('real A')
+
+if A():  # 类实例 默认为真 => if bool(A())
+    print('read A()')
+    
+>>> real A
+>>> read A()
+
+class B:
+    def __bool__(self):  # self 跟当前实例(B的实例)有关
+        return False
+        # return bool(self)  递归
+
+print(bool(B))  # B 类对象 type的实例
+>>> True  # 类对象 默认为真
+
+t = B()
+print(bool(t))
+>>> False # t.__bool__()
+```
+
+### \__len__
+
+```python
+# 空容器 等效False 仅Python
+  - []
+  - ()
+  - {}
+  - set()
+  - ''
+  - b''
+# 
+  - None
+  - 0
+
+class B:
+    def __len__(self):
+        print('enter __len__')
+        # return 100 -> True
+        # 返回值 >=0; 0 False; >0 非空True
+        # True if > 0 else False
+        return 0
+    
+t = B()
+print(bool(t))  # bool(t) => t.__bool__ => t.__len__
+>>> enter __len__
+>>> False
+
+# 类实例 没有__bool__ __len__ 默认为真
+# 类对象 默认为真 是type实例
+class B:
+    pass
+
+bool(B), bool(B())
+>>> (True, True)
+```
+
+
+
+### \__slots__
+
+```python
+class Student:
+    __slots__ = ('name', 'age') 
+    # 用tuple定义允许绑定的属性名称
+    # 限制实例的属性
+    # 使用__slots__要注意 __slots__定义的属性仅对当前类实例起作用 对继承的子类是不起作用的
+```
 
 
 
