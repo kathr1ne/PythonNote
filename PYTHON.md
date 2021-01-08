@@ -10,7 +10,7 @@
 
 ```Bash
 # DependsInsatll
-$ yum install -y git curl gcc make patch gdbm-devel openssl-devel sqlite-devel readline-devel zlib-devel bzip-devel
+$ yum install -y git curl gcc make patch gdbm-devel openssl-devel sqlite-devel readline-devel zlib-devel bzip2-devel
 ```
 
 
@@ -437,7 +437,111 @@ p1 / 'ifcfg-eth0'
 # 比如上面Path类中 / 做的除法运算符重载
 #  1 / 2    => instance1.__xxx__(instance2)
 # 'a' + 'b' => + 被运算符重载 用来描述字符串拼接 比用函数拼接(concat('a', 'b'))
+```
 
+#### \_\_gt\_\_ \_\_lt\_\_ \_\_eq\_\_
+
+**大小比较 使用这三个方法 解决所有比较问题**
+
+```python
+class A:
+    def __init__(self, x):
+        self.x = x
+
+print(sorted([A(5), A(2), A(3)]))  
+# 自定义类A 没有实现> or <运算符重载 不支持比较
+# 内建类型 Python自己实现 自定义类 需要自己实现内容比较
+>>> TypeError: '<' not supported between instances of 'A' and 'A'
+  
+# 不能比较大小 单可以判断 ==
+# == 同类型 比较内容 不知道怎么比较内容 同类型转为比较内存地址是否相同
+# 不同类型 直接False
+print(1, A(3) == A(5))
+print(2, A(3) == A(3))
+print(3, 100 == A(3))
+>>> 1 False
+>>> 2 False
+>>> 3 False
+
+class A:
+    def __init__(self, x):
+        self.x = x
+	# 定义__eq__方法 解决 == 是否等于的问题
+    def __eq__(self, other):  # 同时实现 != __ne__
+        return self.x == other.x
+    
+    def __gt__(self, other):  # 同时实现 < __lt__
+        return self.x > other.x
+    
+    def __ge__(self, other):  # 同时实现 <= __le__
+        return self.x >= other.x
+        
+    def __repr__(self):
+        return "<A {}>".format(self.x)
+
+print(1, A(3) == A(5))  # A(3).__eq__(A(5))
+print(2, A(3) == A(3))
+print(3, 100 == A(3))  # 涉及反转的算法
+>>> False
+>>> True
+>>> AttributeError: 'int' object has no attribute 'x'	
+
+# 定义__gt__魔术方法之后 再次比较
+print(sorted([A(5), A(2), A(3)]))  # A(5).__gt__(A(3))
+>>> [<A 2>, <A 3>, <A 5>]    # __repr__方法输出
+
+print(A(5) < A(3))  # 定义__gt__ 同时实现__lt__
+>>> False
+```
+
+#### \_\_sub\_\_
+
+```python
+class Student:
+    def __init__(self, name, score):
+        self.name = name
+        self.score = score
+
+    # 减法运算符重载
+    def __sub__(self, other):
+        return self.score - other.score
+    
+    def __repr__(self):
+        return "<Student {}: {}>".format(self.name, self.score)
+
+tom = Student('Tom', 90)
+jerry = Student('Jerry', 85)
+print(tom)
+print(tom - jerry)  # tom.__sub__(jerry)
+tom -= jerry  # 调用__isub__ 如果没有转而调用tom.__sub__(jerry) +=类似
+print(tom)
+>>> <Student Tom: 90>  # 刚实例化后 是类对象
+>>> 5
+>>> 5  # -= 之后 改变了tom类型(不合适)：Student -> int
+
+# 定义__isub__魔术方法解决该问题
+# 方法1
+def __isub__(self, other):  # inplace 就地修改
+    # 重新构建了一个Student实例 内存地址改变
+    return Student(self.name, self.score - other.score)
+
+>>> <Student Tom: 90> 2716001388360
+>>> <Student Tom: 5> 2716001388744
+
+# 方法2
+def __isub__(self, other):  # inplace 就地修改
+    # 在self对象上直接修改 还是原来的实例 内存地址不变
+    self.score -= other.score
+    return self
+
+>>> <Student Tom: 90> 2943212406664
+>>> <Student Tom: 5> 2943212406664
+
+# 方法3
+def __isub__(self, other):  # inplace 就地修改
+    # 比方法1 更通用 要先实现 __sub__
+    # 同方法1 内存地址改变
+    return Student(self.name, self - other)
 ```
 
 
