@@ -39,7 +39,7 @@ Server默认监听80 只不过这个Server正好它能提供http请求报文的�
 uwsgi等软件 调用的就是django/flask的wsgi.py 得到 application 
 ```
 
-**入口**
+- 入口
 
 ```python
 # 入口
@@ -50,7 +50,8 @@ uwsgi等软件 调用的就是django/flask的wsgi.py 得到 application
 4. 调用start_response后返回get_response返回的响应的结果
 ```
 
-**Django中的实现 **
+- Django中的实现 
+
 
 ```python
 # wsgi.py
