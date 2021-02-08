@@ -36,14 +36,14 @@ def get_dict(env):
     return res
 
 
-import pymysql
+import pymysql  # 仅测试使用
 def get_user(env):
     # 去数据库中获取数据 传递给html页面(借助模板语法) 发送给浏览器
     conn = pymysql.connect(
-        host='106.15.228.189',
+        host='127.0.0.1',
         port=3306,
-        user='minho',
-        password='Lee19941230@',
+        user='user',
+        password='passwd',
         db='test',
         charset='utf8',
         autocommit=True
