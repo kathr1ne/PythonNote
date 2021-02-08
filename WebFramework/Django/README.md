@@ -1,10 +1,4 @@
-# Django
-
-[Django英文官方文档](https://docs.djangoproject.com/en/3.1/)
-
-[Django中文官方文档](https://docs.djangoproject.com/zh-hans/3.1/)
-
-
+# FrameWork前置
 
 ## 纯手写WEB框架
 
@@ -116,10 +110,9 @@ websocket协议   数据传输是密文
     4. 并发的问题 
   ```
 
-
 ### 借助wsgiref参考实现
 
-**借助wsgiref **
+**缺点**
 
 - 没有写服务端代码 
 - 没有写请求头处理代码 
@@ -299,7 +292,7 @@ views.py       # 视图函数(后端业务逻辑)
 templates文件夹 # 专门用来存储html文件 
 ```
 
-### 动静态网页
+## 动静态网页
 
 ```python
 """
@@ -313,15 +306,92 @@ templates文件夹 # 专门用来存储html文件
     2. 数据是从数据库中获取的 展示到html页面上
 
 """
+
+# 动态网页制作
+import datetime
+def get_time(env):
+    current_time = "{:%F %T}".format(datetime.datetime.now())
+    # 如何将后端获取到的数据"传递"给前端HTML文件?
+    with open('templates/mytime.html', encoding='utf-8') as f:
+        data = f.read()
+    # 在后端将html页面处理好之后再返回给前端
+    data = data.replace('%%time%%', current_time)
+    return data
+
+# 将一个字典传递给html文件 并且可以在文件上方便快捷操作字典数据 --> Jinja2
+from jinja2 import Template
+def get_dict(env):
+    user_dic = {'username': 'Minho', 'age': 25, 'password': '!(#@$^*fjashidga'}
+    with open('templates/get_dict.html', encoding='utf-8') as f:
+        data = f.read()
+    tmp = Template(data)
+    res = tmp.render(user=user_dic)  # 给get_dict.html传递了一个值 页面上通过变量名user就能够拿到user_dict
+    return res
+
+# 后端获取数据库中数据展示到前端页面
+import pymysql
+def get_user(env):
+    # 去数据库中获取数据 传递给html页面(借助模板语法) 发送给浏览器
+    conn = pymysql.connect(
+        host='127.0.0.1',
+        port=3306,
+        user='minho',
+        password='passwd',
+        db='test',
+        charset='utf8',
+        autocommit=True
+    )
+    cursor = conn.cursor(cursor=pymysql.cursors.DictCursor)
+    sql = 'select * from employees'
+    affect_rows = cursor.execute(sql)
+    data_list = cursor.fetchall()  # [{}, {}, {}]
+    # 将获取到的数据 传递给html文件
+    with open('templates/get_data.html', encoding='utf-8') as f:
+        data = f.read()
+    tmp = Template(data)
+    res = tmp.render(emp_list=data_list)
+    return res
+
+```
+
+## 模板技术
+
+### Jinja2
+
+```python
+pip install jinja2
+
+"""模板语法是在后端起作用的 先在后端渲染好HTML页面 然后返回去浏览器"""
+
+# 模板语法(非常贴近Python语法)
+<!--Jinja2模板语法-->
+{{ user }}
+{{ user.get('username') }}
+{{ user.password }}
+{{ user['age'] }}
+
+# Jinja2 循环列表数据
+<tbody>
+<!--[{}, {}, {}]-->
+{% for emp in emp_list %}
+<tr>
+<td>{{ emp.emp_no }}</td>
+<td>{{ emp.birth_date }}</td>
+<td>{{ emp.first_name + ' ' + emp.last_name }}</td>
+<td>{{ emp.gender }}</td>
+<td>{{ emp.hire_date }}</td>
+</tr>
+{% endfor %}
+</tbody>
 ```
 
 
 
-  
+# Django
 
+[Django英文官方文档](https://docs.djangoproject.com/en/3.1/)
 
-
-
+[Django中文官方文档](https://docs.djangoproject.com/zh-hans/3.1/)
 
 ## Install
 
