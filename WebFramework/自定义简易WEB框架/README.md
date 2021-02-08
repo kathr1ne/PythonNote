@@ -287,9 +287,16 @@ def xxx(enx):
 ```python
 # 按照功能不同拆分之后 后续添加功能只需要再urls.py书写对应关系 然后在views.py书写业务逻辑即可
 
-urls.py        # 路由与视图函数对应关系
-views.py       # 视图函数(后端业务逻辑)
-templates文件夹 # 专门用来存储html文件 
+# 路由与视图函数对应关系
+../urls.py   
+
+# 视图函数(后端业务逻辑) 备注：视图函数可以是函数 也可以是类 
+  - 面向函数式编程 
+  - 面向对象式编程
+../views.py  
+
+# 专门用来存储html文件
+../templates文件夹  
 ```
 
 ## 动静态网页
@@ -301,6 +308,7 @@ templates文件夹 # 专门用来存储html文件
   
 动态网页：
   数据是实时获取的
+  在后端发生的 不在浏览器上 后端直接渲染好html返回给浏览器
   e.g.:
     1. 后端获取当前时间 展示到html网页上
     2. 数据是从数据库中获取的 展示到html页面上
@@ -363,7 +371,11 @@ pip install jinja2
 
 """模板语法是在后端起作用的 先在后端渲染好HTML页面 然后返回去浏览器"""
 
-# 模板语法(非常贴近Python语法)
+# 模板语法(非常贴近Python语法) 有时候比Python语法更简单
+{{ user_list }}
+{% for i in user_list %}
+{% endfor %}
+
 <!--Jinja2模板语法-->
 {{ user }}
 {{ user.get('username') }}
@@ -394,3 +406,4 @@ wsgiref模块 作用：
   2. 响应走的时候 给数据打包成符合http格式 再返回给浏览器  -- start_response
 """
 ```
+

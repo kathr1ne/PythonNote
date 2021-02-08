@@ -248,6 +248,8 @@ AUTH_PASSWORD_VALIDATORS = []
 from django.shortcuts import HttpResponse
 
 # Create your views here.
+
+# 视图函数必须要接收一个形参：request
 def index(request):
     """
     :param request: 请求相关的所有数据对象 比之前的environ更好用 是对象 直接. 取属性 比字典好用
@@ -287,6 +289,25 @@ TEMPLATES = [
 ]
 ```
 
+**render两种传值方式**
+
+```python
+def index(request):
+    """
+    1. 直接传一个字典 模板使用key进行使用 精确传值 使用哪个传哪个
+    
+    2. local()
+    locals() 会将所在的名称空间中所有的名字全部传递给HTML页面
+    当需要传的数值特别多的时候 使用 locals() 传值
+    """
+    user_dict = {'username': 'Minho', 'age': 25}
+    # render 传值 1.
+    # return render(request, 'myfirst.html', {'data': user_dict, 'date': '2021-02-09'})
+    
+    # render 传值 2.
+    return render(request, 'myfirst.html', locals())
+```
+
 ### redirect
 
 **重定向**
@@ -307,7 +328,47 @@ def home(request):
     return HttpResponse('home')
 ```
 
+## 登录功能实现
 
+- 静态文件配置
+- request对象方法初始
+- Django ORM简介
+- 利用ORM实现数据的增删改查操作
+
+```python
+# 登录功能
+"""
+html文件：默认都放在templates文件夹下
+静态文件：将网站使用的静态文件默认都放在static文件夹下
+
+静态文件：前端已经写好 能够直接调用使用的文件
+  - 网站写好的js文件
+  - 网站写好的css文件
+  - 网站用到的图片文件
+  - 第三方前端框架
+  ...
+  总结：拿来就可以直接使用的  
+"""
+
+# django默认不会自动创建static文件夹 需要你手动创建
+一般情况下 我们会在static文件夹内 还会做进一步的划分处理
+=> 解耦合 方便管理
+  - static
+    - js
+    - css
+    - img
+    - 其他第三方文件
+   
+"""
+在浏览器中 输入url能够看到对应的资源
+是因为后端提前开设了该资源的接口
+"""
+
+```
+
+
+
+------
 
 
 
