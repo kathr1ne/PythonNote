@@ -4,12 +4,312 @@
 
 [Django中文官方文档](https://docs.djangoproject.com/zh-hans/3.1/)
 
-## Install
+## 注意事项
+
+```python
+# 如何让你的计算机能够正常的启动Django项目
+
+"""
+  1. 计算机的名称不能有中文
+  2. 一个Pycharm窗口只开一个项目
+  3. 项目里面所有的文件也尽量不要出现中文
+  4. Python解释器结论使用 3.4-3.6之间的版本
+    4.1. 如果你的项目报错 点击最后一个报错信息 去源码中把逗号删掉
+"""
+
+# Django版本问题
+推荐使用：LTS 官方长期支持维护的版本
+"""
+1.x 2.x 3.x(成熟版本出来后考虑)
+1.x 和 2.x 本身差距并不大
+"""  
+```
+
+## 安装
 
 ```bash
 # 安装django == 指定安装版本
-pip install django==x.x.x  
+$ pip install django==x.x.x
+
+# e.g. 直接安装 会自动卸载旧的安装新的
+$ pip install django==1.11.11
+
+# 验证是否安装成功
+$ django-admin  # 看是否输出帮助文档
 ```
+
+## django基本操作
+
+- **命令行操作**
+
+```python
+# 1. 创建django项目
+# 如果已经实现创建项目目录 [目录] 直接换为 .(当前目录)
+$ django-admin startproject [项目名] [目录]
+$ django-admin startproject [name] .
+
+# e.g.
+$ cd MinhoDjango  # 进入已存在的目录 作为项目根目录
+$ django-admin startprojcet mysite .
+
+# 2. 启动django目录
+$ python manage.py runserver  # 默认: 127.0.0.1:8080
+
+
+# 3. 创建应用
+"""
+Next, start your first app by running python manage.py startapp [app_label].
+
+应用名应该做到见名知意：
+  - user
+  - order
+  - web
+  - ...
+"""
+$ python manage.py startapp app01
+```
+
+- **Pycharm创建**
+
+```python
+"""
+1. File --> New Project --> Django项目
+
+2. 启动
+    2.1 还是用命令行启动
+    2.2 点击绿色小箭头即可
+   
+3. 创建应用app
+    3.1 还是用命令行创建
+    3.2 Tools --> Run manage.py Task... # 进入shell
+        startapp app01  # 创建app01 应用
+
+4. 修改端口号以及创建server
+   右上角 --> Edit Configure
+
+"""
+```
+
+- **区别**
+
+**命令行与pycharm创建的区别**
+
+```python
+"""
+  1. 命令行创建不会自动有 root_projects/templates 文件夹 需要你自己手动创建 而pycharm创建会自动帮你创建并且还会自动在配置文件中配置对应的路径
+  意味着 你在用命令创建django项目的时候 不单单需要创建templates文件夹 还需要去配置文件中配置路径
+"""
+
+# 命令行创建
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+    },
+]
+
+# Pycharm创建
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [BASE_DIR / 'templates']
+    },       
+]
+```
+
+## 应用
+
+```python
+"""
+django 是一款专门用来开发app的web框架
+
+django框架就类似一所大学(空壳子 需要自己创建具有不同功能的app)
+app就类似大虚额里面的各个学院(学院--具体功能的app)
+
+比如开发淘宝：
+  - 订单相关
+  - 用户相关
+  - 投诉相关
+  - 创建不同的app对应不同的功能
+  
+学课系统：
+  - 学生功能
+  - 老师功能
+  
+一个app就是一个独立的功能模块
+"""
+```
+
+**创建的应用 一定要去配置文件中注册**
+
+```python
+# Application definition
+"""
+一定要注册 否则应用不生效
+创建出来的应用 第一步先去配置文件中注册 其他的先不要给我改
+备注: 在使用Pycharm创建项目的时候 Pycharm可以帮你创建一个app并自动注册(仅一个)
+"""
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'app01.apps.App01Config',  # 全写
+    'app01',  # 简写
+    'app02',
+]  # 全写 or 简写 选择其中一种即可
+
+```
+
+## 主要文件介绍
+
+```python
+"""
+MinhoDjango/
+    - manage.py          django的入口文件
+    - db.sqlite3         django自带的sqlite3数据库(小型数据库 功能不全还有BUG)
+    - mysite/
+        - __init__.py
+        - settings.py    配置文件
+        - urls.py        路由与视图对应关系(路由层)
+        - wsgi.py        wsgiref模块(忽略)
+    - app01
+        - migrations/    所有的数据库迁移记录(类日志记录)
+            - __init__.py
+        - __init__.py
+        - admin.py       django后台管理
+        - apps.py        注册使用
+        - models.py      数据库相关的 模型类(模型层 ORM)
+        - tests.py       测试文件(忽略)
+        - views.py       视图函数(视图层)
+"""
+```
+
+## 配置文件
+
+```python
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = True  # 上线之后改为Flase
+
+ALLOWED_HOSTS = []  # 上线之后可以写 '*'  允许所有
+
+# 注册的app(app就是自带的功能模块) django一创建出来 自带6个功能模块
+# Application definition
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'app01.apps.App01Config',
+    'app02',
+]
+
+# Django中间件
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+# HTML存放路径配置
+TEMPLATES = []
+
+# 项目指定数据库配置 默认sqlite3
+# Database
+# https://docs.djangoproject.com/en/3.1/ref/settings/#databases
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
+
+# Password validation
+# https://docs.djangoproject.com/en/3.1/ref/settings/#auth-password-validators
+AUTH_PASSWORD_VALIDATORS = []
+```
+
+## Django小白必会三板斧
+
+### HttpResponse
+
+**HttpResponse 直接返回字符串**
+
+```python
+from django.shortcuts import HttpResponse
+
+# Create your views here.
+def index(request):
+    """
+    :param request: 请求相关的所有数据对象 比之前的environ更好用 是对象 直接. 取属性 比字典好用
+    :return:
+    """
+    data = HttpResponse('Hello, Django')
+    print('1', data)
+    print('2', type(data))
+    return HttpResponse("Hello, Django")
+
+>>> 1 <HttpResponse status_code=200, "text/html; charset=utf-8">
+>>> 2 <class 'django.http.response.HttpResponse'>
+```
+
+### render
+
+**render 返回html文件 使用渲染之后的模板**
+
+```python
+from django.shortcuts import render
+
+# Create your views here.
+def index(request):
+    """
+    :param request: 请求相关的所有数据对象 比之前的environ更好用 是对象 直接. 取属性 比字典好用
+    :return:
+    """
+    return render(request, 'myfirst.html')
+
+# 低版本 命令行创建 需要配置模板目录
+$ mkdir ${root_projects}/templates
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [os.path.join(BASE_DIR, 'templates')]
+	},
+]
+```
+
+### redirect
+
+**重定向**
+
+```python
+from django.shortcuts import redirect
+
+# Create your views here.
+def index(request):
+    """
+    :param request: 请求相关的所有数据对象 比之前的environ更好用 是对象 直接. 取属性 比字典好用
+    :return:
+    """
+    # return redirect('https://www.baidu.com/')  # 重定向到外部网址
+    return redirect('/home/')  # 302重定向到 自己的网站 /home/
+
+def home(request):
+    return HttpResponse('home')
+```
+
+
+
+
 
 ## 本质
 
@@ -361,7 +661,7 @@ WEBTest  # 项目目录
   -- manage.py      # 相当于 django-admin 代理
 ```
 
-## DjangoRestFramework
+# DjangoRestFramework
 
 [Django REST Framework文档](https://www.django-rest-framework.org/)
 
