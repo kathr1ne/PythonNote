@@ -330,11 +330,6 @@ def home(request):
 
 ## 登录功能实现
 
-- 静态文件配置
-- request对象方法初始
-- Django ORM简介
-- 利用ORM实现数据的增删改查操作
-
 ```python
 # 登录功能
 """
@@ -361,10 +356,202 @@ html文件：默认都放在templates文件夹下
    
 """
 在浏览器中 输入url能够看到对应的资源
-是因为后端提前开设了该资源的接口
+是因为后端提前开设了该资源的接口 -- 路由分发
+如果访问不到资源 说明后端没有开设该资源的接口
 """
 
+# 访问 login页面 没有加载bootstrap样式的问题
+访问 http://127.0.0.1:8000/static/bootstrap-3.3.7-dist/css/bootstrap.min.css 报错 说明后端没有开设该资源的请求路由出来
+
+# 静态文件配置 -- 重点
+按照下面方法在settings.py配置文件配置static相关静态文件配置之后 即可访问引用的本地static文件夹下面的静态资源 -- 类似于django自己帮我们开设了对应的路由接口
 ```
+
+**login.html示例**
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login In</title>
+    <link rel="stylesheet" href="/static/bootstrap-3.3.7-dist/css/bootstrap.min.css">
+    <script src="/static/bootstrap-3.3.7-dist/js/bootstrap.min.js"></script>
+    <script src="/static/js/jquery-3.5.1.min.js"></script>
+
+</head>
+<body>
+<h1 class="text-center">登录</h1>
+</body>
+</html>
+```
+
+###  **静态文件配置**
+
+```python
+# 类似于访问静态文件的令牌
+# 如果你想要访问静态文件 你就必须以static开头
+# 切记：该配置 是配置访问url的开头的值 令牌 并不是静态文件存放的目录
+STATIC_URL = '/static/'  
+
+"""
+/static/  -  令牌
+去下面STATICFILES_DIRS列表里面的目录里面 按顺序查找引用的文件
+  eg. bootstrap-3.3.7-dist/css/bootstrap.min.css
+  都没有找到 则报错
+"""
+
+# 静态文件配置 列表 可以有多个
+# 静态文件真正存放的目录 可以有多个目录 按顺序解析
+# 前面的找到请求的文件之后 不再向后查找
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+    os.path.join(BASE_DIR, 'static1'),
+]
+
+
+# 浏览器 设置页面不缓存的方法
+
+"""
+当你在写django项目的时候 可能会出现后端代码修改了但是前端页面没有变化的情况
+  1. 在同一个端口开了好几个django项目 一直在跑的是第一个django项目
+  2. 浏览器缓存的问题 按照下面方法解决
+  右键 --> 检查 --> 设置图标(settings) --> Preferences --> Network --> 勾选上 Disable cache(while Devtools is open)
+"""
+```
+
+**静态文件动态解析**
+
+```html
+<!-- 静态文件动态解析
+使用模板语法 会自动解析setting.py里面配置的 STATIC_URL 然后自动拼接url
+e.g: 
+STATIC_URL = '/static/'
+url -> /static/bootstrap-3.3.7-dist/js/bootstrap.min.js
+
+or
+
+STATIC_URL= '/xxx/'
+url -> /xxx/bootstrap-3.3.7-dist/js/bootstrap.min.js
+-->
+
+{% load static %}
+<link rel="stylesheet" href="{% static 'bootstrap-3.3.7-dist/css/bootstrap.min.css' %}">
+<script src="{% static 'bootstrap-3.3.7-dist/js/bootstrap.min.js' %}"></script>
+```
+
+**form表单**
+
+```python
+# form表单 默认是GET方法请求数据
+# ?后面的内容为参数 不参与(不影响)路径匹配
+http://127.0.0.1:8000/login/?username=minho&password=123131313
+   
+"""
+form表单action参数
+  1. 不写 默认向当前所在的url提交数据
+  2. 全写 指名道姓
+  3. 只写后缀 /login/
+"""
+
+"""
+form表单提交方法 改为post提交数据 提交会报错
+  Forbidden (403)
+  CSRF verification failed. Request aborted.
+
+解决：
+  在前期 我们使用django提交post请求的时候 需要去配置文件中注释掉一行代码
+  注释掉 中间件配置中的 CsrfViewMiddleware
+"""
+
+# settings.py
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+# views.login处理函数
+def login(request):
+    # 返回一个登录界面
+    """
+    GET请求和POST请求 应该有不同的处理机制 -> 如何处理?
+    引入下面 request对象方法初始 探索django封装的request对象
+    :param request:
+    :return:
+    """
+    print('enter login...')
+    return render(request, 'login.html')
+```
+
+### request对象方法初始
+
+- **request.method**
+
+```python
+def login(request):
+    # 返回一个登录界面
+    """
+    GET请求和POST请求 应该有不同的处理机制 -> 如何处理?
+    :param request: 请求相关的数据对象 里面有很多简易的方法
+    :return:
+    """
+    # 返回请求方式 并且是全大写的字符串 <class 'str'>
+    # print(request.method)  
+    
+    """
+    这种方式 2层逻辑 推荐下一种
+    if request.method == 'GET':
+        print('Method GET')
+        return render(request, 'login.html')
+    elif request.method == 'POST':
+        return HttpResponse("收到了 POST请求")
+    """
+    if request.method == 'POST':
+        return HttpResponse('收到POST')
+    return render(request, 'login.html')
+```
+
+- **request.POST**
+
+```python
+# 获取用户post请求提交的普通数据 不包含文件
+request.POST
+  - request.PSOT.get()      # 只获取列表最后一个元素
+  - request.POST.getlist()  # 直接将整个列表取出
+```
+
+- **request.GET**
+
+```python
+# 获取用户get请求提交的数据
+# get请求携带的数据是有大小限制的 大概只有4KB左右
+# 而post请求则没有限制
+request.GET
+  # 获取到的数据类型 方法的使用 和 request.POST 一模一样
+  - request.GET.get()      # 只获取列表最后一个元素
+  - request.GET.getlist()  # 直接将整个列表取出
+    
+def login(request):
+    # 返回一个登录界面
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        return HttpResponse('收到POST')
+    # 注意get 和 getlist方法区别
+    hobby = request.GET.getlist('hobby')
+    return render(request, 'login.html')
+```
+
+
+
+### Django ORM简介
+### 利用ORM实现数据的增删改查操作
 
 
 
