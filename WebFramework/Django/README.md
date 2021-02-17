@@ -549,17 +549,13 @@ def login(request):
 ```
 
 
-
-### Django ORM简介
-### 利用ORM实现数据的增删改查操作
-
-
-
 ------
 
 
 
-## 本质
+# Django ORM
+
+## Django本质
 
 ```bash
 # Django本质
@@ -640,6 +636,7 @@ django.setup(set_prefix=False)
 
 ```python
 # MySQL数据库配置
+# 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
@@ -648,6 +645,7 @@ DATABASES = {
         'PASSWORD': 'password',  # 连接密码
         'HOST': 'host',  # 主机IP
         'PORT': '3306',  # 端口
+        'CHARSET': 'utf8'
     }
 }
 
@@ -671,6 +669,17 @@ LOGGING = {
 }
 ```
 
+**mysqlclient or pymysql**
+
+```python
+# 如果要使用pymysql 在项目包文件__init__.py中加入下面代码
+import pymysql
+pymysql.install_as_MySQLdb()
+
+mysqlcilent  # c语言编写 速度快 推荐
+pymsyql      # python原生 兼容度高
+```
+
 ### 依赖
 
 ```bash
@@ -686,6 +695,9 @@ pip install mysqlclient
 table  =>  class		# 表 映射为 类
 row    =>  object		# 行 映射为 实例
 column =>  property     # 字段 映射为 属性(类属性)
+
+# 不足
+封装程度太高 有时候sql语句的效率偏低 需要你自己写SQL语句
 ```
 
 **实例**
@@ -711,6 +723,31 @@ class Student:
         self.name = ?
         self.age = ?
 ```
+
+**创建model类**
+
+```python
+# 去应用下面的 models.py 文件
+from django.db import models
+# Create your models here.
+# model类 编写
+class User(models.Model):
+    id = models.AutoField(primary_key=True)  # id int primary_key auto_increment
+    username = models.CharField(max_length=32)  # username varchar(32)
+    password = models.IntegerField()  # password int
+
+    
+# 数据库迁移命令
+# 只要你修改了models.py中跟 **数据库** 相关的代码 就必须重新执行下面两条命令
+python manage.py makemigrations    # 将操作记录基础出来(migrations文件夹)
+python manage.py migrate  # 将操作真正的同步到数据库中
+
+
+# 设置sql_mode官方文档参考
+https://docs.djangoproject.com/zh-hans/3.1/ref/databases/#mysql-notes
+```
+
+
 
 ### Model元编程
 
