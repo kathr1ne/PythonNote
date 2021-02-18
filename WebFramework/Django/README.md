@@ -4,6 +4,61 @@
 
 [Django中文官方文档](https://docs.djangoproject.com/zh-hans/3.1/)
 
+## Django请求生命周期
+
+### 流程
+
+```python
+"""
+浏览器发送请求 => WEB网关服务接口 => Django框架
+                                 -> 中间件 middleware (-> 缓存数据库 拿到则返回)
+                                 -> 路由层 urls.py
+                                 -> 视图层 views.py
+                                    -> 模板层 templates
+                                    -> 模型层 modes.py
+                                 -> 拿到数据/模板 渲染后按路径返回
+                            
+请求经过WEB网关服务接口 需要了解：
+  - django自带的是wsgiref
+    1. 请求来的时候 解析请求 并封装为request对象
+    2. 响应走的时候 打包处理
+  - django自带的wsgiref模块本身能够支持的并发量很小 最多1000左右
+  - 上线会换成 nginx(反向代理) + uwsgi
+  
+  WSGI/wsgiref/uwsgi是什么关系?
+    - WSGI 是协议
+    - wsgiref/uwsgi是实现该协议的功能模块
+    
+请求经过Django框架 需要了解：
+  -> 先经过Django中间件
+  -> 路由层 urls.py 路由匹配与分发
+  -> 视图层 views.py 
+     - 视图层可能需要模板 -> 模板层(templates文件夹)
+     - 视图层可能需要数据 -> 模型层 models.py
+     - 视图层拿到数据之后 渲染并按路径返回
+"""
+```
+
+### 扩展
+
+**缓存数据库**
+
+```python
+"""
+提前已经将你想要的数据准备好 你来直接拿即可
+ - 减轻后端压力
+ - 提高效率和响应时间
+    
+缓存数据库在请求流程中的位置   
+  - 经过中间件之后 直接请求缓存数据库
+    - 拿到 直接返回
+    - 没拿到 走正常流程 然后存一份到缓存数据库并返回
+    
+当你在修改你的数据的时候 你会发现数据并不是立即修改完的
+而是需要经过一段时间才会修改(还在访问的缓存的内容)
+"""
+```
+
 ## 注意事项
 
 ```python
@@ -548,8 +603,6 @@ def login(request):
     return render(request, 'login.html')
 ```
 
-
-
 ------
 
 
@@ -877,6 +930,226 @@ user_obj = models.User(username=username, password=password)
 user_obj.save()  # 保存数据
 ```
 
+### 改
+
+[QuerySet.update](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/#django.db.models.query.QuerySet.update)
+
+```python
+# 先将数据库中的数据全部展示到前端 然后给每一个数据2个按钮 一个编辑一个删除
+ef userlist(request):
+    # 查询用户表里面 所有的数据
+    # 方式1 不推荐
+    # data = models.User.objects.filter()
+
+    # 方式2
+    user_queryset = models.User.objects.all()
+    return render(request, 'userlist.html', {'user_info': user_queryset})
+
+# 编辑功能
+  1. 点击编辑按钮朝后端发送编辑数据的请求
+  """
+  Q: 如何告诉后端 用户想要编辑哪条数据?
+  A: 将编辑按钮所在的哪一行数据的 主键值 发送给后端 -- 唯一确定值
+  
+  Q: 如何发送主键值?
+  A: <a> href="/edit_user/?user_id={{ user.id }}" </a>
+     利用url问号后面携带参数的方式 传主键值给后端获取
+  """
+
+  2. 后端查询出用户想要编辑的数据对象 展示到前端页面供用户查看和编辑
+    
+# view 代码实现
+def userlist(request):
+    # 查询用户表里面 所有的数据
+    # 方式1 不推荐
+    # data = models.User.objects.filter()
+    
+    # 方式2
+    user_queryset = models.User.objects.all()
+    return render(request, 'userlist.html', {'user_info': user_queryset})
+
+def edit_user(request):
+    # 获取url问号后面携带的参数 href="/edit_user/?user_id={{ user.id }}"
+    user_id = request.GET.get('user_id')
+    # 查询当前用户想要编辑的数据对象
+    user_obj = models.User.objects.filter(id=user_id).first()
+
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        # 如果是post提交 去数据库修改对象的数据内容
+        # 修改方式1
+        """
+        将filter查询出来的列表中所有的对象全部更新 批量更新操作
+        只会修改被修改的字段
+        """
+        # models.User.objects.filter(id=user_id).update(username=username, password=password)
+
+        # 修改方式2
+        """
+        该方式 当字段非常多的时候 效率会特别的低
+        从头到尾将数据的所有字段全部更新一遍 无论该字段是否被修改
+        """
+        user_obj.username = username
+        user_obj.password = password
+        user_obj.save()  # 内部自动识别 不是保存 而且更新
+
+        # 跳转到数据的展示页面
+        return redirect('/userlist/')
+
+    # 将数据对象展示到页面上
+    return render(request, 'edit_user.html', {'user_info': user_obj}
+
+# 删除功能
+
+```
+
+### 删
+
+[QeurySet.delete](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/#django.db.models.query.QuerySet.delete)
+
+```python
+# 删除功能
+"""
+跟编辑功能逻辑类似
+"""
+
+def del_user(request):
+    # 获取用户想要删除的数据id值
+    user_id = request.GET.get('user_id')
+    # 直接去数据库中找到对应的数据 删除即可
+    """delete 批量删除"""
+    models.User.objects.filter(id=user_id).delete()
+    # 跳转到展示页面
+    return redirect('/userlist/')
+
+
+# 数据删除 最好不要真正的删除 添加 is_delete字段
+"""
+真正的删除功能 需要二次确认
+删除数据内部其实并不是真正的删除 我们会被数据添加一个标识字段 用来表示当前数据是否被删除 
+如果数据被删除 仅仅是将字段修改一下状态
+展示的时候 筛选一下该字段即可
+
+username    password    is_delete
+minho        123         0
+karubin      123         1
+
+数据值钱 删除危险且浪费 一般情况下 切记不要真正的去删除数据
+"""
+
+```
+
+## django orm中如何创建表关系
+
+```python
+"""
+表与表之间的关系
+  - 一对多
+  
+  - 多对多
+  
+  - 一对一
+
+判断表关系的方法：换位思考
+"""
+e.g.
+图书表 book
+id    title    price
+1     django   213.12
+2     flask    123.33
+3     c++      89.08
+
+出版社表 publish
+id      name     address
+1     上海出版社   上海
+2     北京出版社   北京
+
+作者表 author
+id    name    age
+1     minho   25
+2     kimi    37
+
+book2author
+id  book_id  author_id
+1    1            1
+2    1            2
+3    2            2
+4    3            1
+
+"""
+图书和出版社 一对多的关系 外键字段建在多的那一方-book
+图书和作者   多对多关系  创建第三张表来专门存储-book2author
+一对一 应用场景：
+  - 拆表 (作者表 与 作者详情表是一对一)
+    - 作者表
+    - 作者详情表
+"""
+```
+
+[一对多ForeignKey](https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/#django.db.models.ForeignKey)
+
+[多对多ManyToManyField](https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/#manytomanyfield)
+
+[一对一OneToOneField](https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/#onetoonefield)
+
+```python
+from django.db import models
+
+# Create your models here.
+# 创建表关系 先将基表创建出来 然后再添加外键字段
+class Book(models.Model):
+    title = models.CharField(max_length=32)
+    price = models.DecimalField(max_digits=8, decimal_places=2)  # 小数总共8位 小数点后面占2位
+    """
+    图书和出版社是一对多 并且书是多的一方 所以外键字段放在book表里面
+    如果字段对应的是ForeignKey 那么ORM会自动在字段后面加_id -> publish_id
+    后面定义ForeignKey的时候 不要自己加_id
+    """
+    publish = models.ForeignKey(to='Publish')  # 默认就是与出版社表的主键字段做外键关联 可以通过to_field设置
+    """
+    图书和作者是多对多关系 外键字段建在任意一方均可 但是推荐创建再查询频率较高的一方
+    authors是一个虚拟字段 主要是用来高速ORM 书籍表 和 作者表 是多对多关系 让ORM自动帮你创建第三张表关系
+    
+    django 1.x 自动级联更新删除 2.x 3.x需要加参数
+    """
+    authors = models.ManyToManyField(to='Author')
+
+class Publish(models.Model):
+    name = models.CharField(max_length=32)
+    address = models.CharField(max_length=64)
+
+class Author(models.Model):
+    name = models.CharField(max_length=32)
+    age = models.IntegerField()
+    """
+    作者与作者详情是一对一关系 外键字段建在任意一方都可以 但是推荐创建在查询频率较高的表中
+    OneToOneField 也会自动给字段加_id后缀
+    """
+    author_detail = models.OneToOneField(to='AuthorDetail')
+
+class AuthorDetail(models.Model):
+    phone = models.BigIntegerField()  # 手机号 或者直接用字符类型
+    address = models.CharField(max_length=32)
+    
+"""
+ORM中如何定义三种关系
+  一对多：publish = models.ForeignKey(to='Publish')
+  多对多：authors = models.ManyToManyField(to='Author')
+  一对一：author_detail = models.OneToOneField(to='AuthorDetail')
+  
+  ForeignKey 和 OneToOneField关系字段 会自动在字段后面加_id后缀
+  ManyToManyField关系字段 会自动创建第三张关系对应表 无需我们手动创建
+"""
+
+# 注意
+"""
+1. 在django1.x版本中 外键默认都是级联更新删除的
+2. 多对多的表关系可以有好几种创建方式 这里只是其中一种
+3. 针对外键字段里面的其他参数 暂时不做考虑 详情可以参考上面官网链接
+"""
+```
+
 
 
 ------
@@ -1036,6 +1309,119 @@ print(User.pks)
 
 # python manage.py runserver  # 测试用的wsgi server
 ```
+
+
+
+------
+
+# Django路由层
+
+## 路由匹配
+
+```python
+# 路由匹配
+url(r'test', views.test),       
+url(r'testadd', views.testadd),
+"""
+http://127.0.0.1:8000/testadd  永远访问不到 永远访问的是views.test视图函数
+
+url方法的第一个参数是正则表达式
+只要第一个参数正则表达式能够匹配到内容 就会立刻停止往下匹配 直接执行对应的视图函数
+"""
+
+# 加斜杠/ django匹配的时候会自动加斜杠去匹配
+"""
+http://127.0.0.1:8000/testadd  第一次匹配 匹配不到 - 301
+django会自动在末尾加一个斜杠 进行第二次匹配 - 200 OK
+
+django内部帮你做的重定向
+  - 一次匹配不行
+  - url末尾加斜杠 再来一次
+"""
+url(r'test/', views.test),       
+url(r'testadd/', views.testadd),
+  
+# 自动加斜杠功能可以取消 配置settings.py
+APPEND_SLASH = False  # 取消自动加斜杠 默认为True 不建议修改
+
+# QA
+Q: GET /msafbsvfbtest/ 可以匹配到 test/
+A: url(r'^test/', v2.test)   # ^ 解决   
+    
+Q: GET /test/sdanakvdbkaadad/daskndakjd 可以匹配到 test/
+A: url(r'^test/$', v2.test)  # ^test$ 正则精确 test
+    
+Q：如何写首页URL
+A: url(r'^$', v2.home)  # 首页匹配 不能写成url(r'', v2.home)
+    
+Q: 尾页(404页面 所有页面都没找到) 需要放在最后
+A: url(r'', v2.error)  # 了解即可 不这样写
+```
+
+## URL分组
+
+```python
+"""
+分组：就是给某一段正则表达式用小括号括起来
+"""
+url(r'^test/\d+$', v2.test)  # 正常访问
+url(r'^test/(\d+$)', v2.test)  # 分组后 报错TypeError test() takes 1 positional argument but 2 were given
+```
+
+### 无名分组
+
+```python
+url(r'^test/(\d+$)', v2.test)  
+# 分组后 报错TypeError 缺少位置参数
+# test() takes 1 positional argument but 2 were given
+
+# 修改视图函数接收分组传递的参数
+def test(request, args):
+    print(args)
+    return HttpResponse('test')
+
+"""
+无名分组 就是将括号内正则表达式匹配到的内容当作 位置参数 传递给后面的视图函数
+"""
+```
+
+### 有名分组
+
+```python
+"""
+(?P<name>) 可以给正则表达式 分组并起一个别名
+有名分组 就是将括号内正则表达式匹配到的内容当作 关键字参数 传递给后面的视图函数
+"""
+url(r'^testadd/(?P<year>\d+)', v2.testadd) 
+# 起别名后 报错 TypeError 缺少关键字参数
+# testadd() got an unexpected keyword argument 'year'
+
+# 增加关键字对应的形参
+def testadd(request, years):
+    print(years)
+    return HttpResponse('testadd')
+```
+
+### 无名/有名混用?
+
+```python
+url(r'^index/(\d+)/(?P<year>\d+)/', v2.index)
+
+def index(request, args, year):
+    print(args, year)
+    return HttpResponse("index")
+
+>>> TypeError at /index/12313/32131313/
+>>> index() missing 1 required positional argument: 'args'
+    
+# 总结： 不能混用
+```
+
+
+
+
+
+------
 
 
 
