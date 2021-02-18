@@ -403,7 +403,7 @@ STATIC_URL = '/static/'
   都没有找到 则报错
 """
 
-# 静态文件配置 列表 可以有多个
+# 静态文件配置 列表 可以有多个(令牌持有者可以访问的文件路径)
 # 静态文件真正存放的目录 可以有多个目录 按顺序解析
 # 前面的找到请求的文件之后 不再向后查找
 STATICFILES_DIRS = [
@@ -490,7 +490,7 @@ def login(request):
     return render(request, 'login.html')
 ```
 
-### request对象方法初始
+### request对象方法初识
 
 - **request.method**
 
@@ -547,6 +547,7 @@ def login(request):
     hobby = request.GET.getlist('hobby')
     return render(request, 'login.html')
 ```
+
 
 
 ------
@@ -636,7 +637,6 @@ django.setup(set_prefix=False)
 
 ```python
 # MySQL数据库配置
-# 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
@@ -680,13 +680,26 @@ mysqlcilent  # c语言编写 速度快 推荐
 pymsyql      # python原生 兼容度高
 ```
 
+**设置sql_mode**
+
+```python
+# 设置sql_mode
+# https://docs.djangoproject.com/zh-hans/3.1/ref/databases/
+
+'OPTIONS': {
+    "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+}
+```
+
 ### 依赖
 
 ```bash
 pip install mysqlclient
 ```
 
-### ORM
+## ORM
+
+### 简介
 
 **ORM 对象关系映射 对象和关系之间的映射 使用面向对象的方式来操作数据库**
 
@@ -724,7 +737,7 @@ class Student:
         self.age = ?
 ```
 
-**创建model类**
+### 创建model类
 
 ```python
 # 去应用下面的 models.py 文件
@@ -736,24 +749,145 @@ class User(models.Model):
     username = models.CharField(max_length=32)  # username varchar(32)
     password = models.IntegerField()  # password int
 
-    
+class Author(models.Model):
+    """
+    django orm当你不定义主键字段的时候 orm会自动帮你创建一个名为id的主键字段
+    后续我们在创建模型表的时候 如果主键字段名没有额外的叫法 那么主键字段可以省略不写 orm帮我们补
+    """
+    username = models.CharField(max_length=32)
+    password = models.IntegerField()
+```
+
+### 数据库迁移
+
+```bash
 # 数据库迁移命令
 # 只要你修改了models.py中跟 **数据库** 相关的代码 就必须重新执行下面两条命令
-python manage.py makemigrations    # 将操作记录基础出来(migrations文件夹)
-python manage.py migrate  # 将操作真正的同步到数据库中
+$ python manage.py makemigrations    # 将操作记录基础出来(migrations文件夹)
+$ python manage.py migrate  # 将操作真正的同步到数据库中
+```
 
+### 字段类型
 
-# 设置sql_mode官方文档参考
-https://docs.djangoproject.com/zh-hans/3.1/ref/databases/#mysql-notes
+https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/
+
+```python
+CharField     # 必须要指定 max_length参数 不指定会直接报错
+verbose_name  # 该参数是所有字段都有的 用来对字段的解释
+...
+```
+
+## 字段的增删改查
+
+### **字段的增加**
+
+```python
+# 给表增加字段的时候 表里面已经有数据的情况
+1. 可以在终端内直接给出默认值 django命令行会在终端给出选择
+    $ You are trying to add a non-nullable field 'age' to user without a default; we can't do that (the database needs something to populate exi
+    sting rows).
+    $ Please select a fix:
+     1) Provide a one-off default now (will be set on all existing rows with a null value for this column)
+     2) Quit, and let me add a default in models.py
+
+2. 设置该字段可以为空(根据实际情况考虑)
+    info = models.CharField(max_length=32, verbose_name='个人简介', null=True)
+    
+3. 直接给字段设置默认值
+    hobby = models.CharField(max_length=32, verbose_name='爱好', null=False, default='study')
+```
+
+### **字段的修改**
+
+```bash
+# models.py 修改后 直接执行迁移命令即可：
+$ python manage.py makemigrations
+$ python manage.py migrate
+```
+
+### **字段的删除**
+
+```python
+# 直接注释对应的字段 然后直接执行迁移命令即可
+$ python manage.py makemigrations
+$ python manage.py migrate
+
+# 比较严重的问题
+迁移命令执行完毕之后 数据库对应的数据也会被删除
+
+# 注意！！！
+"""
+在操作models.py的时候 一定要细心
+  - 千万不要随意注释一些字段
+  - 执行迁移命令之前 最好先检查下自己写的代码
+"""
+
+# 个人建议： 当你离开你的计算机之后 一定要锁屏
+```
+
+## 数据的增删改查
+
+[`QuerySet` API 参考](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/)
+
+### 查
+
+[filter](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/#filter)
+
+```python
+# 查
+models.User.objects.filter(username=username)
+
+"""
+返回值可以先看成是列表套数据对象的格式
+它也支持索引取值 切片操作 但是不支持负索引
+它也不推荐你使用索引的方式取值
+
+models.User.objects.filter(username=username)[0]
+models.User.objects.filter(username=username).first()
+"""
+
+# 简单登录功能实现 使用 ORM 查询
+def login(request):
+    if request.method == 'POST':
+        # 获取用户提交的用户名和密码 利用orm 校验数据
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        # 去数据库查询数据
+        from app01 import models
+        user_obj = models.User.objects.filter(username=username).first()
+        if user_obj:
+            # 比对密码是否一致
+            if password == user_obj.password:
+                return HttpResponse('Login Success')
+            return HttpResponse('Login Failed, Password Error')
+        return HttpResponse('用户不存在')
+    return render(request, 'login.html')
+```
+
+### 增
+
+[create](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/#create)
+
+```python
+# create 返回当前被创建的对象本身
+res = models.User.objects.create(username=username, password=password)
+
+# 实例化对象 调用save方法
+user_obj = models.User(username=username, password=password)
+user_obj.save()  # 保存数据
 ```
 
 
 
-### Model元编程
+------
+
+
+
+## Model元编程
 
 **Django Model 背后的故事 -- 元编程**
 
-#### 测试环境
+### 测试环境
 
 ```bash
 cd ../project_dir
@@ -773,7 +907,7 @@ python manage.py startapp user
 一定要在settings.py INSTALLED_APPS 注册user 否则不能迁移
 ```
 
-#### Model数据库模型
+### Model数据库模型
 
 ```python
 # user/models.py
@@ -798,7 +932,7 @@ class User(models.Model):  # 继承的目录 代码复用
 # 迁移：Model类生成数据库中的表和字段
 ```
 
-#### 元类
+### 元类
 
 - **类定义**
 
@@ -904,47 +1038,6 @@ print(User.pks)
 ```
 
 
-
-## Useage
-
-```bash
-# 使用脚手架工具 创建项目相关文件
-django-admin startproject name [dir]  
-
-django-admin startproject cmdb .
-
-python manage.py startapp user  
-# 创建一个业务包 项目中的一个应用 一个功能模块
-# 创建包之后 一定要在 项目settings.py文件中 注册一下：配置 INSTALLED_APPS = [..., 'user',]   非常重要
-# 创建包(模块)之后 即可在里面进行CODE
-```
-
-
-
-## Django目录结构
-
-```python
-# 目录结构
-WEBTest  # 项目目录
-  -- first  # 主目录 主要是项目配置、入口
-    -- __init__.py  # 包文件
-    -- asgi.py      # 2.x 不支持asgi 各种gi的入口文件
-    -- settings.py  # 全局配置文件 重要
-    -- urls.py      # 路径映射
-    -- wsgi.py      # 入口
-  
-  -- user          # 和fisrt平行 功能模块
-    -- migrations  # 数据库迁移相关的目录
-      -- __init__.py
-    -- __init__.py  # 包文件
-    -- admin.py     # 后台管理
-    -- apps.py      # 跟该应用相关的数据
-    -- models.py    # ORM构建模型类
-    -- tests.py     # 测试脚本
-    -- views.py     # 视图
-    
-  -- manage.py      # 相当于 django-admin 代理
-```
 
 # DjangoRestFramework
 
