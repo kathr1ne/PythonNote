@@ -1918,17 +1918,52 @@ def dispatch(self, request, *args, **kwargs):
     # 获取当前请求的小写格式 然后比对当前请求方式是否合法
     # get请求为例
     if request.method.lower() in self.http_method_names:
-        """
-       反射：通过字符串来操作对象的属性或方法 运行时获取对象定义信息
+       """
+       反射：通过字符串来操作对象的属性或方法 运行时获取类型定义信息
        handler = getattr(自己写的类产生的对象, 'get', 当找不到get属性或者方法的时候就会用第三个参数)
        handler = 我们自己写的类里面的get方法
        """
         handler = getattr(self, request.method.lower(), self.http_method_not_allowed)
     else:
         handler = self.http_method_not_allowed
-    return handler(request, *args, **kwargs)
     # 自动调用get方法
+    return handler(request, *args, **kwargs)
 ```
+
+**反射补充**
+
+```python
+运行时：runtime 区别于编译时 指的是程序被加载到内存中执行的时候
+反射：reflection 执行是运行是获取类型定义信息
+
+"""
+一个对象能够在运行时 像照镜子一样 反射出其类型信息
+简单说 在Python中 能够通过一个对象 找出其type class attribute或method的能力 成为反射或者自省
+"""
+
+具有反射能力的函数有:
+  - type() 
+  - isinstance()
+  - callable() 
+  - dir()
+  - getattr() 等等...
+    
+反射相关的魔术方法：
+__getattr__
+__setattr__
+__delattr__
+
+__getattribute__
+```
+
+| 内建函数                         | 意义                                                         |
+| -------------------------------- | ------------------------------------------------------------ |
+| getaddr(object, name[, default]) | 通过name返回object的属性值 当属性不存在 将使用default返回 如果没有default 则抛出AttributeError name必须为**字符串** |
+| setaddr(object, name, value)     | object的属性存在则覆盖 不存在则新增                          |
+| hasattr(object, name)            | 判断对象是否具有这个名字的属性 name必须为**字符串**          |
+
+
+
 
 - **settings源码剖析(尝试理解)**
 
