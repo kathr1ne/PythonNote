@@ -30,11 +30,11 @@
     - wsgiref/uwsgi是实现该协议的功能模块
     
 请求经过Django框架 需要了解：
-  -> 先经过Django中间件
-  -> 路由层 urls.py 路由匹配与分发
-  -> 视图层 views.py 
-     - 视图层可能需要模板 -> 模板层(templates文件夹)
-     - 视图层可能需要数据 -> 模型层 models.py
+  -> 先经过Django中间件(类似与django的保安 门户)
+  -> 路由层 urls.py 路由匹配与分发 识别路由匹配对应的视图函数
+  -> 视图层 views.py 网站整体的业务逻辑
+     - 视图层可能需要模板 -> 模板层(templates文件夹) 网站所有的html页面
+     - 视图层可能需要数据 -> 模型层 models.py **重要** ORM
      - 视图层拿到数据之后 渲染并按路径返回
 """
 ```
@@ -334,7 +334,7 @@ def index(request):
     """
     return render(request, 'myfirst.html')
 
-# 低版本 命令行创建 需要配置模板目录
+# 命令行创建 需要配置模板目录
 $ mkdir ${root_projects}/templates
 TEMPLATES = [
     {
@@ -1040,7 +1040,7 @@ karubin      123         1
 
 ```
 
-## django orm中如何创建表关系
+## orm创建表关系
 
 ```python
 """
@@ -1108,7 +1108,7 @@ class Book(models.Model):
     """
     publish = models.ForeignKey(to='Publish')  # 默认就是与出版社表的主键字段做外键关联 可以通过to_field设置
     """
-    图书和作者是多对多关系 外键字段建在任意一方均可 但是推荐创建再查询频率较高的一方
+    图书和作者是多对多关系 外键字段建在任意一方均可 但是推荐创建再查询频率较高的一方 (查询方便)
     authors是一个虚拟字段 主要是用来高速ORM 书籍表 和 作者表 是多对多关系 让ORM自动帮你创建第三张表关系
     
     django 1.x 自动级联更新删除 2.x 3.x需要加参数
@@ -1145,9 +1145,22 @@ ORM中如何定义三种关系
 # 注意
 """
 1. 在django1.x版本中 外键默认都是级联更新删除的
-2. 多对多的表关系可以有好几种创建方式 这里只是其中一种
+2. 多对多的表关系可以有好几种(三种)创建方式 这里只是其中一种
 3. 针对外键字段里面的其他参数 暂时不做考虑 详情可以参考上面官网链接
 """
+```
+
+**on_delete参数补充**
+
+[ForeignKey.on_delete](https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/#django.db.models.ForeignKey.on_delete)
+
+```python
+on_delete=models.CASCADE,     # 删除关联数据,与之关联也删除
+on_delete=models.DO_NOTHING,  # 删除关联数据,什么也不做
+on_delete=models.PROTECT,     # 删除关联数据,引发错误ProtectedError
+on_delete=models.SET_NULL,    # 删除关联数据,与之关联的值设置为null（前提该字段需要设置为可空,一对一同理）
+on_delete=models.SET_DEFAULT, # 删除关联数据,与之关联的值设置为默认值（前提FK字段需要设置默认值,一对一同理）
+on_delete-models.SET(),      # 删除之后执行一个函数
 ```
 
 
@@ -1402,7 +1415,7 @@ def testadd(request, years):
     return HttpResponse('testadd')
 ```
 
-### 无名/有名混用?
+### 不能混用
 
 ```python
 url(r'^index/(\d+)/(?P<year>\d+)/', v2.index)
@@ -1414,18 +1427,235 @@ def index(request, args, year):
 >>> TypeError at /index/12313/32131313/
 >>> index() missing 1 required positional argument: 'args'
     
-# 总结： 不能混用
+# 总结： 不能混用 但是 同一个分组可以使用N多次
+url(r'^index/(\d+)/(\d+)/(\d+)/', views.index),
+url(r'^index/(?P<year>\d+)/(?P<month>\d+)/(?P<day>\d+)/', views.index),
+
+def index(request, *args, **kwargs):
+    print(args)    # ('12', '3123', '42341')
+    print(kwargs)  # {'year': '12', 'month': '3123', 'day': '42341'}
+    return HttpResponse("<h1>index</h1>")
 ```
 
+### 反向解析
+
+```python
+"""
+本质：通过一些方法得到一个结果 该结果可以访问到对应的url 从而触发对应视图函数的运行
+
+步骤：
+  1. 先给路由与视图函数起一个别名
+  url(r'^func_minho/', views.func, name='alias_func'),
+  
+  2. 反向解析
+    2.1 后端反向解析
+    from django.shortcuts import reverse, HttpResponseRedirect
+    url = reverse('alias_func')
+    return HttpResponseRedirect(url)
+        
+    2.2 前端反向解析 (模板语法)
+    <a href="{% url 'alias_func' %}">111</a>
+"""
+```
+
+- **最简单的请况 url第一个参数里面没用正则符号**
+
+```python
+# url
+url(r'^home/', views.home, name='home_page'),
+
+"""
+给url函数添加一个 name参数(**唯一**) 起一个名字 类似于别名 
+注意: 别名唯一 别名不能冲突！！！
+我可以访问到这个名字(url正则可以随意修改) 然后获取到对应的url 从而触发视图函数的运行
+
+1. 前端
+  {% url 'alias_name' %}    
+  alias_name对应url函数里面的 name参数对应的字符串
+
+2. 后端
+   reverse()
+"""
+```
+
+- **无名分组反向解析**
+
+```python
+# url
+url(r'^index/(\d+)/', views.index, name='alias_index'),
+
+# 前端
+<a href="{% url 'alias_index' 123 %}">111</a
+
+# 后端
+reverse('alias_index', args=(1,))  # /index/1/
+
+"""
+这个数字写代码的时候应该放什么?
+  - 数字 一般情况下放的是数据的主键值 来做数据的编辑和删除
+  # urls.py
+  url(r'^edit/(\d+)/', views.edit, name='xxx')
+  
+  # views.py
+  def edit(request, edit_id):
+      reverse('xxx', args=(edit_id,))
+  
+  # html
+  {% for user in user_queryset %}
+  <a href='{% url 'xxx' user.id %}'>编辑</a>
+  {% endfor %}
+  
+"""
+```
+
+- **有名分组反向解析**
+
+```python
+# url
+url(r'^func/(?P<year>\d+)', views.func, name='alias_func')
+
+# 前端
+<a href="{% url 'alias_func' year=2009 %}">111</a>
+<a href="{% url 'alias_func' 2021 %}">222</a>
+
+# 后端
+1. 有名分组写法一
+reverse('alias_func', kwargs={'year': 2010})
+
+2. 有名分组 简便写法
+reverse('alias_func', args=(2021,))
+```
+
+## 路由分发
+
+```python
+"""
+特点：django 每一个应用 都可以有自己的templates文件夹 urls.py static文件夹
+  正是基于上述特点 django能够非常好的做到分组开发(每个人只写自己的app)
+
+  多人开发完之后 只需要将每个人书写的app全部拷贝到一个新的django项目中 然后在配置文件里面注册所有的app 再利用路由分发的特点将所有的app整合起来
+  
+  当一个django项目中的url特别多的时候 总路由urls.py代码非常冗余 不好维护
+  解决: 利用路由分发来减轻总路由的压力
+"""
+
+# 路由分发
+"""
+利用路由分发之后 总路由不在处理 路由与视图函数的直接对应关系 而是做一个分发处理
+处理：识别当前url是属于哪个应用下的 然后直接分发给对应的应用处理
+"""
+```
+
+**路由分发实现**
+
+```python
+from django.conf.urls import url, include
+from app01 import urls as app01_urls
+from app02 import urls as app02_urls
+
+# 总路由
+urlpatterns = [
+    # 路由分发
+    # 只要url前缀是app01开头的 全部交给app01处理
+    url(r'^app01/', include(app01_urls)), 
+    # 只要url前缀是app02开头的 全部交给app02处理
+    url(r'^app02/', include(app02_urls)),  
+]
+
+# 子路由 app01.urls
+from django.conf.urls import url
+from app01 import views
+urlpatterns = [
+    url(r'^reg/', views.reg)
+]
+
+# 子路由 app02.urls
+from django.conf.urls import url
+from app02 import views
+urlpatterns = [
+    url(r'^reg/', views.reg)
+]
 
 
+# 总路由 推荐写法 简便
+url(r'^app01/', include('app01.urls')),
+url(r'^app02/', include('app02.urls')),
+# 注意事项：总路由的url 千万不能加$结尾 加了之后 无法继续向下匹配
+```
 
+## 名称空间
 
-------
+**解决url别名 命名冲突的问题 了解即可 可以不用 保证别名不同即可**
 
+```python
+# 当多个应用出现了相同的别名 反向解析是否会自动识别对应的前缀
 
+"""
+正常请况下的反向解析 是没有办法自动识别前缀的
+"""
 
-# DjangoRestFramework
+# 解决：利用名称空间
 
-[Django REST Framework文档](https://www.django-rest-framework.org/)
+# 总路由加名称空间：namespace
+urlpatterns = [
+    url(r'^app01/', include('app01.urls', namespace='app01')),
+    url(r'^app02/', include('app02.urls', namespace='app02')),
+]
+
+# 子路由 别名一致
+"""
+# app01.urls
+urlpatterns = [url(r'^reg/', views.reg, name='reg')]
+
+# app02.urls
+urlpatterns = [url(r'^reg/', views.reg, name='reg')]
+"""
+
+# 解析的时候
+  - 前端
+    <a href="{% url 'app01:reg' %}">111</a>
+    <a href="{% url 'app02:reg' %}">222</a>
+    
+  - 后端
+    reverse('app01:reg')
+    reverse('app02:reg')
+```
+
+**总结：其实只要保证名字不冲突 就没有必要使用名称空间 **
+
+```python
+"""
+一般情况下 有多个app的时候 我们在起别名的时候 会加上对应app的前缀
+这样的话 就能够确保多个app之前名字不冲突的问题
+"""
+```
+
+## 伪静态
+
+**了解**
+
+```python
+"""
+静态网页
+  数据是写死的 万年不变
+  
+伪静态
+  将一个动态网页 伪装为静态网页
+  
+  为什么要伪装呢?
+    e.g.: 博客园
+    伪装的目的 
+      - 在于增大本网站的seo查询力度 
+      - 并且增加搜索引擎收藏本网站的概率
+      
+  搜索引擎：本质就是一个巨大的爬虫程序
+  总结：无论怎么优化 还是搞不过搜索竞价
+ 
+
+"""
+# 实现 把url设置为.html结尾 乍一看 以为是静态(伪静态)
+urlpatterns = [
+    url(r'^reg.html/', views.reg, name='app01_reg'),
+]
+```
 
