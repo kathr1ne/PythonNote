@@ -868,7 +868,7 @@ $ python manage.py migrate
 # 比较严重的问题
 迁移命令执行完毕之后 数据库对应的数据也会被删除
 
-# 注意！！！
+# **注意**
 """
 在操作models.py的时候 一定要细心
   - 千万不要随意注释一些字段
@@ -1226,7 +1226,6 @@ class User(models.Model):  # 继承的目录 代码复用
 class A:  # 语法定义
     pass
 
-
 # type函数问什么 问你是谁的实例
 
 # type说明什么？ A是type的实例 A称为类对象 由type构造出来的实例
@@ -1325,9 +1324,7 @@ print(User.pks)
 
 
 
-------
-
-# Django路由层
+# 路由层
 
 ## 路由匹配
 
@@ -1466,7 +1463,7 @@ url(r'^home/', views.home, name='home_page'),
 
 """
 给url函数添加一个 name参数(**唯一**) 起一个名字 类似于别名 
-注意: 别名唯一 别名不能冲突！！！
+注意: **别名唯一 别名不能冲突**
 我可以访问到这个名字(url正则可以随意修改) 然后获取到对应的url 从而触发视图函数的运行
 
 1. 前端
@@ -1554,6 +1551,9 @@ from app01 import urls as app01_urls
 from app02 import urls as app02_urls
 
 # 总路由
+"""
+只要url是app01开头就会自动将url中app01后面的路径交给 app01下的urls.py去做匹配
+"""
 urlpatterns = [
     # 路由分发
     # 只要url前缀是app01开头的 全部交给app01处理
@@ -1621,7 +1621,7 @@ urlpatterns = [url(r'^reg/', views.reg, name='reg')]
     reverse('app02:reg')
 ```
 
-**总结：其实只要保证名字不冲突 就没有必要使用名称空间**
+**总结：其实只要保证别名不冲突 就没有必要使用名称空间**
 
 ```python
 """
@@ -1659,7 +1659,7 @@ urlpatterns = [
 ]
 ```
 
-------
+
 
 # 视图层
 
@@ -1749,7 +1749,7 @@ def ab_json(request):
     # In order to allow non-dict objects to be serialized set the safe parameter to False
     return JsonResponse(lst, safe=False)
 
-# JsonResponse 默认只能序列化字典 序列化其他需要加safe参数
+# JsonResponse 默认只能序列化字典 序列化其他数据(其他可以被序列化的数据 不是所有的数据都能被序列化) 需要加safe参数
 ```
 
 ------
@@ -1812,6 +1812,8 @@ request.body  # 原生的 浏览器发过来的二进制数据
 
 ### FBV
 
+**基于函数的视图**
+
 ```python
 # FBV
 def index(request):
@@ -1820,13 +1822,18 @@ def index(request):
 
 ### CBV
 
+- **基于类的视图**
+
 ```python
-# CBV路由
+# CBV路由 urls.py写法
+# as_view() CBV路由写法和FBV有点不一样(其实本质相同)
 url(r'^login/', views.MyLogin.as_view()),
 
+# 类视图
 from django.views import View
 
 class MyLogin(View):
+    """只要是处理业务逻辑的视图函数 形参里面肯定要有request"""
     def get(self, request):
         return render(request, 'form.html')
 
@@ -1839,11 +1846,109 @@ FBV和CBV各有千秋
 CBV特点：
   能够直接根据请求方式的不同 直接匹配到对应的方法执行
  
-  思考：内部实现
+  思考：内部如何实现的?  -- **非常重要** 学习DRF必备的知识点
 """
 ```
 
+- **CBV源码剖析**
 
+```python
+# 千万不要随意修改源码 出BUG很难找
+```
+
+**突破口**
+
+```python
+# CBV源码剖析 突破口在urls.py
+from django.conf.urls import url
+from app02 import views
+
+urlpatterns = [
+    url(r'^index/', views.index),
+    url(r'^login/', views.LoginView.as_view()),
+]
+"""
+函数/方法 加括号执行优先级最高 
+as_view() 立即执行
+猜测 as_view()可以通过我们自定义的类LoginView类直接调用 可能是下面2种情况
+  - 1. @staticmethod 修饰的静态方法
+  - 2. @classmethod 修饰的类方法
+ 
+1. as_view()本质
+  url(r'^login/', views.LoginView.as_view())
+  上述代码在启动django的时候就会立刻执行as_view()方法
+  as_view()方法会返回一个函数 view
+  => url(^'^login/', views.view)  => 变形后 和FBV一样
+  CBV与FBV在路由匹配上 本质是一样的 都是路由 对应 函数(函数内存地址)
+  
+2. 浏览器访问/login/ 触发views.view view具体做了什么? 
+"""
+```
+
+**as_view()本质**
+
+```python
+@classonlymethod
+def as_view(cls, **initkwargs):
+    def view(request, *args, **kwargs):
+        self = cls(**initkwargs)
+        # cls是我们自己写的类 调用的时候自动注入
+        # self = LoginView(**initkwargs) 产生一个我们自己写的类对象
+        if hasattr(self, 'get') and not hasattr(self, 'head'):
+            self.head = self.get
+        self.request = request
+        self.args = args
+        self.kwargs = kwargs
+        return self.dispatch(request, *args, **kwargs)
+        """
+        以后 经常会需要看源码 但是在看Python源码的时候 一定要时刻提醒自己 面向对象属性方法查找顺序 mro
+        总结：看源码 只要看到了self.xxx 一定要问自己 当前这个self到底是谁
+        """
+    return view
+```
+
+**dispatch CBV精髓**
+
+```python
+# CBV的精髓
+def dispatch(self, request, *args, **kwargs):
+    # Try to dispatch to the right method; if a method doesn't exist,
+    # defer to the error handler. Also defer to the error handler if the
+    # request method isn't on the approved list.
+    # 获取当前请求的小写格式 然后比对当前请求方式是否合法
+    # get请求为例
+    if request.method.lower() in self.http_method_names:
+        """
+       反射：通过字符串来操作对象的属性或方法 运行时获取对象定义信息
+       handler = getattr(自己写的类产生的对象, 'get', 当找不到get属性或者方法的时候就会用第三个参数)
+       handler = 我们自己写的类里面的get方法
+       """
+        handler = getattr(self, request.method.lower(), self.http_method_not_allowed)
+    else:
+        handler = self.http_method_not_allowed
+    return handler(request, *args, **kwargs)
+    # 自动调用get方法
+```
+
+- **settings源码剖析(尝试理解)**
+
+# 模板层
+
+## 模板语法
+
+### 传值
+
+
+
+### 过滤器
+
+### 标签
+
+### 自定义过滤器/标签及inclusion_tag
+
+## 模板继承
+
+## 模板导入
 
 
 
