@@ -1893,7 +1893,7 @@ def as_view(cls, **initkwargs):
     def view(request, *args, **kwargs):
         self = cls(**initkwargs)
         # cls是我们自己写的类 调用的时候自动注入
-        # self = LoginView(**initkwargs) 产生一个我们自己写的类对象
+        # self = LoginView(**initkwargs) 产生一个我们自己写的类的实例
         if hasattr(self, 'get') and not hasattr(self, 'head'):
             self.head = self.get
         self.request = request
