@@ -1160,7 +1160,7 @@ on_delete=models.DO_NOTHING,  # 删除关联数据,什么也不做
 on_delete=models.PROTECT,     # 删除关联数据,引发错误ProtectedError
 on_delete=models.SET_NULL,    # 删除关联数据,与之关联的值设置为null（前提该字段需要设置为可空,一对一同理）
 on_delete=models.SET_DEFAULT, # 删除关联数据,与之关联的值设置为默认值（前提FK字段需要设置默认值,一对一同理）
-on_delete-models.SET(),      # 删除之后执行一个函数
+on_delete-models.SET(),       # 删除之后执行一个函数
 ```
 
 
@@ -1621,7 +1621,7 @@ urlpatterns = [url(r'^reg/', views.reg, name='reg')]
     reverse('app02:reg')
 ```
 
-**总结：其实只要保证名字不冲突 就没有必要使用名称空间 **
+**总结：其实只要保证名字不冲突 就没有必要使用名称空间**
 
 ```python
 """
@@ -1632,7 +1632,7 @@ urlpatterns = [url(r'^reg/', views.reg, name='reg')]
 
 ## 伪静态
 
-**了解**
+**了解即可**
 
 ```python
 """
@@ -1657,5 +1657,307 @@ urlpatterns = [url(r'^reg/', views.reg, name='reg')]
 urlpatterns = [
     url(r'^reg.html/', views.reg, name='app01_reg'),
 ]
+```
+
+------
+
+# 视图层
+
+**视图函数必须返回HttpResponse对象**
+
+```python
+# 否则报错
+The view app01.views.index didn't return an HttpResponse object. It returned None instead.
+```
+
+## 三板斧
+
+```python
+# HttpResponse
+返回字符串类型
+class HttpResponse(HttpResponseBase):
+    pass
+
+# render
+返回html页面 并且返回之前还可以给html文件传值
+def render(request, template_name, context=None, content_type=None, status=None, using=None):
+    """
+    Returns a HttpResponse whose content is filled with the result of calling
+    django.template.loader.render_to_string() with the passed arguments.
+    """
+    content = loader.render_to_string(template_name, context, request, using=using)
+    return HttpResponse(content, content_type, status)
+
+# redirect
+重定向 也是继承的HttpResponse
+```
+
+## render简单的内部原理
+
+```python
+def index(request):
+    from django.template import Template, Context
+    res = Template('<h1>{{ user }}</h1>')
+    con = Context({'user': {'username': 'minho', 'password': 123}})
+    ret = res.render(con)
+    print(ret)
+    return HttpResponse(ret)
+
+>>> <h1>{&#39;username&#39;: &#39;minho&#39;, &#39;password&#39;: 123}</h1>
+```
+
+## JsonResponse
+
+```python
+"""
+Q: json格式的数据有什么用?
+A: 前后端数据交互需要使用到json作为过渡 实现跨语言传输数据
+
+前端序列化：
+  - JSON.stringify()      json.dumps()
+  - JSON.parse()          json.loads()
+"""
+
+# 任务：给前端浏览器返回一个json格式的字符串
+```
+
+- **原生json模块实现**
+
+```python
+# 原生json模块实现
+import json
+def ab_json(request):
+    user_dict = {'username': 'Minho这是中文', 'password': '123123', 'hobby': 'study'}
+    # 先转成json格式字符串
+    json_str = json.dumps(user_dict, ensure_ascii=False)
+    return HttpResponse(json_str)
+```
+
+- **JsonResponse实现**
+
+```python
+from django.http import JsonResponse
+def ab_json(request):
+    user_dict = {'username': 'Minho这是中文', 'password': '123123', 'hobby': 'study'}
+    lst = [111, 222, 333, 444]
+    
+    # 读源码 掌握用法 如何传参
+    # 序列化 字典
+    return JsonResponse(user_dict, json_dumps_params={'ensure_ascii': False})
+    
+    # 序列化非字典对象 需要加safe参数 通过报错信息得知
+    # In order to allow non-dict objects to be serialized set the safe parameter to False
+    return JsonResponse(lst, safe=False)
+
+# JsonResponse 默认只能序列化字典 序列化其他需要加safe参数
+```
+
+------
+
+## Form表单上传文件及后端如何操作
+
+```python
+"""
+form表单上传文件类型的数据
+  1. method必须指定成post
+  2. enctype必须换成formdata
+"""
+
+def ab_file(request):
+    if request.method == 'POST':
+        # print(request.POST)  # 只能获取普通键值对数据 文件不行
+        # print(request.FILES)  # <MultiValueDict: {'file': [<TemporaryUploadedFile: python-3.8.7-amd64.exe (application/x-msdownload)>]}>
+        file_obj = request.FILES.get('file')  # 文件对象
+        print(file_obj.name)
+        with open(file_obj.name, 'wb') as f:
+            for line in file_obj.chunks():  # 推荐加上chunks
+                f.write(line)
+    return render(request, 'form.html')
+```
+
+## request对象方法
+
+```python
+"""
+request.method
+request.POST
+request.GET
+request.FILES
+"""
+
+"""
+request.path
+request.path_info
+request.get_full_path()  # 能获取完整的rul及问号后面的参数
+"""
+URL: http://127.0.0.1:8000/app01/ab_file/?username=minho
+            
+requesst.path           -> /app01/ab_file/
+request.path_info       -> /app01/ab_file/
+
+# 既能拿路由 也能拿参数 上面两个方法不能拿参数
+request.get_full_path() -> /app01/ab_file/?username=minho
+
+
+"""
+request.body  # 原生的 浏览器发过来的二进制数据
+  - GET      b''
+  - POST      
+"""
+```
+
+## FBV与CBV
+
+**视图函数既可以是函数也可以是类**
+
+### FBV
+
+```python
+# FBV
+def index(request):
+    return HttpResponse('index')
+```
+
+### CBV
+
+```python
+# CBV路由
+url(r'^login/', views.MyLogin.as_view()),
+
+from django.views import View
+
+class MyLogin(View):
+    def get(self, request):
+        return render(request, 'form.html')
+
+    def post(self, request):
+        return HttpResponse('post方法')
+    
+"""
+FBV和CBV各有千秋
+
+CBV特点：
+  能够直接根据请求方式的不同 直接匹配到对应的方法执行
+ 
+  思考：内部实现
+"""
+```
+
+
+
+
+
+
+
+------
+
+
+
+# Django版本区别
+
+```python
+1.x 2.x 3.x区别
+2.x 3.x 差不多
+```
+## 路由层
+
+```python
+"""
+1. django 1.x 路由层使用的是url方法
+   django 2.x 3.x 路由层使用的是path方法
+    - url() 第一个参数支持正则
+    - path() 第一个参数是不支持正则的 写什么就匹配什么
+
+如果你不习惯使用path 也提供了另一个方法 re_path
+from django.urls import re_path
+from django.conf.urls import url  # 可以继续使用url 不推荐
+
+2.x 3.x 里面的re_path() 等价于1.x里面的url
+
+2. 虽然path不支持正则 但是它的内部支持5种转换器
+"""
+```
+
+### path转换器
+
+[博客参考](https://www.cnblogs.com/xiaoyuanqujing/articles/11642628.html)
+
+- **示例**
+
+```python
+# 将第二个路由里面的内容先转成整型 然后以关键字的形式传递给后面的视图函数
+path('index/<int:id>/', views.index)
+```
+
+- **5种转换器**
+
+```python
+# 5种转换器
+str    匹配除了路径分隔符（/）之外的非空字符串，这是默认的形式
+int    匹配正整数，包含0
+slug   匹配字母、数字以及横杠、下划线组成的字符串
+uuid   匹配格式化的uuid，如 075194d3-6885-417e-a8a8-6c931e272f00
+path   匹配任何非空字符串 包含了路径分隔符（/）（不能用？）
+```
+
+- **自定义转换器**
+
+```python
+# 除了有默认的5个转换器之外 还支持自定义转换器
+class MonthConverter:
+    regex='\d{2}' # 属性名必须为regex
+    
+    def to_python(self, value):
+        return int(value)
+    
+    def to_url(self, value):
+        # 匹配的regex是两个数字，返回的结果也必须是两个数字
+        return value 
+```
+
+- **自动转换器使用**
+
+```python
+from django.urls import path,register_converter
+from app01.path_converts import MonthConverter
+
+# 注册
+register_converter(MonthConverter,'mon')  
+
+# 使用
+from app01 import views
+urlpatterns = [
+    path('articles/<int:year>/<mon:month>/<slug:other>/', views.article_detail, name='aaa'),
+]
+```
+
+## 模型层
+
+```python
+"""
+模型层里面1.x外键默认都是级联更新删除的
+但是到了2.x和3.x中 需要你自己手动配置on_delete参数
+"""
+
+# 1.x
+publish = models.ForeignKey(to='Publish')
+
+# 2.x 3.x
+# 具体参数参考官网文档
+publish = models.ForeignKey(to='Publish', on_delete='xxx')
+```
+
+**on_delete参数补充**
+
+[ForeignKey.on_delete](https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/#django.db.models.ForeignKey.on_delete)
+
+```python
+on_delete=models.CASCADE,     # 删除关联数据,与之关联也删除
+on_delete=models.DO_NOTHING,  # 删除关联数据,什么也不做
+on_delete=models.PROTECT,     # 删除关联数据,引发错误ProtectedError
+on_delete=models.SET_NULL,    # 删除关联数据,与之关联的值设置为null（前提该字段需要设置为可空,一对一同理）
+on_delete=models.SET_DEFAULT, # 删除关联数据,与之关联的值设置为默认值（前提FK字段需要设置默认值,一对一同理）
+on_delete=models.SET(),       # 删除之后执行一个函数
+on_delete=RESTRICT,           # New in Django 3.1.
 ```
 
