@@ -1953,7 +1953,7 @@ __getattr__
 __setattr__
 __delattr__
 
-__getattribute__
+__getattribute__  # 特殊 尽量不用
 ```
 
 | 内建函数                         | 意义                                                         |
@@ -1973,17 +1973,337 @@ __getattribute__
 
 ### 传值
 
+**模板语法传值**
 
+```jinja2
+{# #}    # 注释
+{{ }}    # 变量相关
+{% %}    # 逻辑相关
+```
+
+**后端传值示例**
+
+```python
+def index(request):
+    # 模板语法可以传递的后端Python数据类型
+    n = 123
+    f = 11.11
+    b = True
+    s = 'name is minho'
+    lst = ['kimi', 'huahua', 'minho']
+    tup = ('11', '22', 33)
+    dic = {'username': 'minho', 'age':20}
+    se = {'按级别的', '密码'}
+    def func():
+        print('我被执行了')
+        return 'func return res'
+    class MyClass:
+        def get_self(self):
+            return 'self'
+        
+        @staticmethod
+        def get_static():
+            return 'static method'
+        
+        @classmethod
+        def get_cls(cls):
+            return 'cls'
+        
+        # 对象被展示到html页面上 就类似于执行了打印操作也会触发__str__方法
+        def __str__(self):
+            return 'MyClass obj'
+    obj = MyClass()
+    return render(request, 'index.html', locals())
+```
+
+**前端展示**
+
+```jinja2
+<p>整型：{{ n }} </p>
+<p>浮点型：{{ f }} </p>
+<p>字符串：{{ s }} </p>
+<p>布尔值：{{ b }} </p>
+<p>列表：{{ lst }}</p>
+<p>元组：{{ tup }}</p>
+<p>字典：{{ dic }}</p>
+<p>集合：{{ se }}</p>
+{# 传递函数名会自动加括号调用 但是模板语法不支持给函数传额外的参数 如果有参数 不执行也不报错 #}
+<p>函数：{{ func }}</p>
+{# 传类名的时候也会自动加括号调用(实例化) #}
+<p>类：{{ MyClass }}</p>
+<p>类对象(ins)：{{ obj }}</p>
+{# Django模板语法 能够自动判断出当前的变量名是否可以加括号调用 如果可以就会自动执行 针对的是函数名和类名 #}
+<p>普通方法：{{ obj.get_self }}</p>
+<p>静态方法：{{ obj.get_static }}</p>
+<p>类方法：{{ obj.get_cls }}</p>
+```
+
+### 取值
+
+```html
+django模板语法的取值 是固定的格式 只能用"句点符" .
+即可点键 也可以点索引  也可以两者混用
+
+<p>username: {{ dic.username }}</p>
+<p>list取值: {{ lst.0 }}</p>
+<p>info: {{ dic.hobby.3.info}}</p>
+```
 
 ### 过滤器
 
+```python
+# 过滤器 就类似于是模板语法内置的 内置方法
+# django内置有60多个过滤器 了解10个左右就差不多 后面遇到再去了解
+```
+
+- 基本语法
+
+```jinja2
+{{ 数据|过滤器:参数 }}
+```
+
+- 常用过滤器
+
+```jinja2
+<h1>过滤器</h1>
+<p>统计长度：{{ s|length }}</p>
+
+{# 第一个参数布尔值为True 就展示第一个参数的值 否则使用default的值 类似 dict.get(d, default) #}
+<p>默认值：{{ b|default:'啥也不是' }}</p>
+
+<p>文件大小：{{ file_size|filesizeformat }}</p>
+<p>日期格式化：{{ current_time|date:'Y-m-d H:i:s' }}</p>
+<p>切片操作(支持步长)：{{ lst|slice:'0:4:3' }}</p>
+<p>切取字符(包含3个.)：{{ info|truncatechars:9 }}</p>
+<p>切取单词(不包含3个. 只按照空格切)：{{ eng|truncatewords:5 }}</p>
+<p>移除特定的字符：{{ eng|cut:'model' }}</p>
+<p>拼接操作：{{ lst|join:'$' }}</p>
+<p>拼接操作(加法): {{ n|add:'10' }}</p>
+<p>拼接操作(加法): {{ s|add:eng }}</p>
+
+{# hhh默认不转义标签 为了安全 不执行恶意scripts代码#}
+<p>转义：{{ hhh|safe }}</p>
+<p>转义：{{ sss|safe }}</p>
+<p>转义：{{ res }}</p>
+```
+
+- **转义**
+
+```python
+# 模板语法 默认不转义标签 为了安全 不执行恶意scripts代码
+
+# 转义标签用法 safe参数
+# 前端
+{{ var|safe }}
+
+# 后端
+from django.utils.safestring import mark_safe
+res = mark_safe('<h1>新新</h1>')
+
+"""
+以后你在写全栈项目的时候 前端代码不一定非要在前端页面书写
+也可以先在后端写好 然后再传递给前端页面
+"""
+```
+
 ### 标签
 
-### 自定义过滤器/标签及inclusion_tag
+**不要被名字干扰 标签就是一堆逻辑**
+
+```jinja2
+{# for循环 #}
+{% for l in lst %}
+    <p>{{ forloop }}</p>
+    <p>{{ item }}</p>    # 一个个元素
+{% endfor %}
+
+{# forloop需要掌握它的参数 #}
+{
+'parentloop': {}, 
+'counter0': 0, 
+'counter': 1, 
+'revcounter': 6, 
+'revcounter0': 5, 
+'first': True, 
+'last': False
+}
+
+{# if判断 #}
+{% if b %}
+    <p>True res</p>
+{% elif s %}
+    <p>elif res</p>
+{% else %}
+    <p>False res</p>
+{% endif %}
+
+{# for if混合使用 #}
+{% for item in lst_empty %}
+    {% if forloop.first %}
+        <p>第一次循环</p>
+    {% elif forloop.last %}
+        <p>最后一次循环</p>
+    {% else %}
+        <p>{{ item }}</p>
+    {% endif %}
+    {% empty %}
+        <p>for循环的可迭代对象 内部没有元素 根本没法循环</p>
+{% endfor %}
+
+{# 可以使用字典的方法 #}
+{% for item in dic.keys %}
+    <p>{{ item }}</p>
+{% endfor %}
+{% for item in dic.items %}
+    <p>{{ item }}</p>
+{% endfor %}
+{% for value in dic.values %}
+    <p>{{ value }}</p>
+{% endfor %}
+{% for item in lst %}
+    <p>{{ item }}</p>
+{% endfor %}
+
+{# with起别名 #}
+{% with dic.hobby.3.info as nb %}
+    {# 在with语法内 就可以通过as后面的别名快速的使用到前面非常复杂获取数据的方式 #}
+    <p>{{ nb }}</p>
+{% endwith %}
+```
+
+## 自定义
+
+**过滤器/标签及inclusion_tag**
+
+- **自定义过滤器**
+
+```python
+"""
+先三步走：
+  1. 在应用下创建一个名字**必须**叫 templatetags文件夹
+  2. 在该文件夹内 创建任意名称的py文件 e.g: mytag.py
+  3. 在该py文件内 **必须**先书写下面两句话 (单词一个都不能错)
+    form django import template
+    register = template.Library()
+"""
+
+from django import template
+register = template.Library()
+# 自定义过滤器(参数最多只有2个)
+@register.filter(name='myfilter')
+def my_sum(x, y):
+    return x + y
+
+# html使用
+<h1>自定义的使用(过滤器 最多只能有2个参数)</h1>
+{% load mytags %}
+<p>{{ n|myfilter:666 }}</p>
+```
+
+- **自定义标签**
+
+**类似自定义函数**
+
+```python
+# 自定义标签(参数可以有多个)
+@register.simple_tag(name='plus')
+def index(a, b, c, d):
+    return "{}-{}-{}-{}".format(a, b, c, d)
+
+# 使用
+{% load mytags %}
+{# 标签多个参数之间 空格隔开 #}
+<p>{% plus 'minho' 123 123 9988 %}</p>
+```
+
+- **自定义inclusion_tag**
+
+```python
+"""
+内部原理：
+  - 先定义一个方法
+  - 在页面上调用该方法 并且可以传值
+  - 该方法会生成一些数据 然后传递给一个html页面
+  - 之后 将渲染好的结果放到调用的位置
+  
+"自动生成某一个页面的局部部分"
+"""
+# 自定义inclusion_tag
+@register.inclusion_tag('left_menu.html')
+def left(n):
+    data = ['第{}项'.format(i) for i in range(n)]
+    # inclusion_tag 两种给作用页面传值的方式
+    # 第一种
+    # return {'data': data}
+    # 第二种
+    return locals()  # 将data传递给left_menu.html
+
+# 局部页面内容
+<ul>
+    {% for item in data %}
+        <li>{{ item }}</li>
+    {% endfor %}
+</ul>
+
+# 使用
+"""
+总结：当html页面某一个地方的页面需要传参数才能够动态的渲染出来 并且在多个页面上都需要使用到该局部 那么就考虑将该局部页面做成inclusion_tag形式
+"""
+{% load mytags %}
+{% left 5 %}
+```
 
 ## 模板继承
 
+```python
+"""
+有一些网站 这些网站页面整体都大差不差 只是某一些局部在做变化
+"""
+
+# 模板的继承 你自己先选好一个你想要继承的模板页面
+{% extends 'home.html' %}
+
+# 继承了之后 子页面跟模板页面长的一摸一样的 你需要在模板页面上提前划定可以被修改的区域
+{% block content %}
+   模板内容
+{% endblock %}
+
+# 子页面 就可以声明想要修改哪块划定的区域
+{% block content %}
+  子页面内容
+{% endblock %}
+
+# 一般情况下 模板页面上应该至少有三块可以被修改的区域
+# 这样划分之后 每一个子页面 就都可以有自己独有的css代码 html代码 js代码
+  1. html区域
+    {% block content %}
+     子页面自己的html内容
+    {% endblock %}
+  2. css区域
+    {% block css %}
+      子页面自己的css
+    {% endblock %}
+  3. js区域
+    {% block js %}
+      子页面自己的js
+	{% endblock %}
+
+"""
+一般情况下 模板的页面上 划定的区域越多 那么该模板的扩展性就越高
+但是如果太多 那还不如自己写(没必要划分太多)
+"""
+```
+
 ## 模板导入
+
+```python
+"""
+将页面的某一个局部 当成模块的形式
+哪个地方需要就可以直接导入使用即可
+"""
+
+{% include 'ok.html' %}
+```
 
 
 
