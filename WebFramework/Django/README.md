@@ -607,7 +607,7 @@ def login(request):
 
 
 
-# Django ORM
+# ORM
 
 ## Django本质
 
@@ -713,7 +713,8 @@ LOGGING = {
         },
     },
     'loggers': {
-        'django': {
+        # django 2.1.4之前的版本 该配置无效 无法看到对象的SQL语句 显示为None
+        'django.db.backends': {
             'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': False,
@@ -750,7 +751,7 @@ pymsyql      # python原生 兼容度高
 pip install mysqlclient
 ```
 
-## ORM
+## ORM初识
 
 ### 简介
 
@@ -2182,7 +2183,7 @@ res = mark_safe('<h1>新新</h1>')
 先三步走：
   1. 在应用下创建一个名字**必须**叫 templatetags文件夹
   2. 在该文件夹内 创建任意名称的py文件 e.g: mytag.py
-  3. 在该py文件内 **必须**先书写下面两句话 (单词一个都不能错)
+  3. 在该py文件内 **必须**先书写下面两句固定的代码 (单词一个都不能错)
     form django import template
     register = template.Library()
 """
@@ -2190,6 +2191,7 @@ res = mark_safe('<h1>新新</h1>')
 from django import template
 register = template.Library()
 # 自定义过滤器(参数最多只有2个)
+# 主要使用 name="" 后面的名字 也就是过滤器名字 函数的名字无所谓 随便取
 @register.filter(name='myfilter')
 def my_sum(x, y):
     return x + y
@@ -2258,6 +2260,7 @@ def left(n):
 ```python
 """
 有一些网站 这些网站页面整体都大差不差 只是某一些局部在做变化
+同一个html页面 想重复使用大部分样式 只是局部的修改
 """
 
 # 模板的继承 你自己先选好一个你想要继承的模板页面
@@ -2271,6 +2274,8 @@ def left(n):
 # 子页面 就可以声明想要修改哪块划定的区域
 {% block content %}
   子页面内容
+  子页面除了可以自己写自己的之外 还可以继续使用模板的内容
+  {{ block.super }}
 {% endblock %}
 
 # 一般情况下 模板页面上应该至少有三块可以被修改的区域
@@ -2291,6 +2296,7 @@ def left(n):
 """
 一般情况下 模板的页面上 划定的区域越多 那么该模板的扩展性就越高
 但是如果太多 那还不如自己写(没必要划分太多)
+利用模板的继承 能够让自己的页面更加的好维护
 """
 ```
 
@@ -2298,12 +2304,137 @@ def left(n):
 
 ```python
 """
-将页面的某一个局部 当成模块的形式
+将页面的某一个局部(e.g：一个好看的表单/导航栏等等) 当成模块的形式
 哪个地方需要就可以直接导入使用即可
 """
 
 {% include 'ok.html' %}
 ```
+
+# 模型层
+
+**重要：跟数据打交道**
+
+## 测试脚本
+
+**参考ORM部分得出的测试脚本**
+
+```python
+import os
+import django
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'cmdb.settings')
+# 加载django配置
+django.setup(set_prefix=False)
+
+# 在下面继续写代码 就可以测试django里面的单个py文件
+from app.model import User  # 不能拿到最上面 所有的代码都必须等待环境准备完毕之后才能书写
+...
+```
+
+## 单表查询(增删改查)
+
+```python
+# django自带的sqlite3数据库对日期格式不是很敏感 处理的时候 容易出错
+```
+
+### 增
+
+```python
+# 1. create() 推荐 
+# create方法 返回当前增加对象本身 可以批量
+res = User.objects.create(name='minhooo', age='18', register_time='2002-10-20')
+print(res)
+
+# 2. save()
+import datetime
+ctime = datetime.datetime.now()  
+# 日期字段可以接受字符串 也可以接受datatime对象
+user_obj = User(name='kimi', age=25, register_time=ctime)
+user_obj.save()
+```
+
+### 删
+
+```python
+# 删
+"""
+pk会自动查找到当前表的主键字段 指代的就是当前表的主键字段
+用了pk之后 你就不需要指定当前表的主键字段到底叫什么
+e.g: uid pid sid ...
+"""
+# 1. delete() 推荐 可以批量
+res = User.objects.filter(pk=3).delete()
+print(res)
+
+# 2. user_obj的delete()
+user_obj = User.objects.filter(pk=6).first()
+user_obj.delete()
+```
+
+
+
+## 常见的十几种查询方法
+
+```python
+
+```
+
+
+
+## 神奇的双下划线查询
+
+```python
+
+```
+
+
+
+## 多表操作
+
+```python
+
+```
+
+
+
+## 外键字段的增删改查
+
+```python
+
+```
+
+
+
+## 跨表查询(重点)
+
+### 子查询
+
+### 联表查询
+
+## 聚合查询
+
+```python
+
+```
+
+
+
+## 分组查询
+
+```python
+
+```
+
+
+
+## F与Q查询
+
+```python
+
+```
+
+
 
 
 
