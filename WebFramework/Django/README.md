@@ -703,6 +703,7 @@ DATABASES = {
 }
 
 # Django ORM难学 通过日志看对应SQL
+# res.query 或者直接调用返回对象的 query方法 可以直接打印SQL语句
 # 具体logging模块详细信息 参考Python标准库文档
 LOGGING = {
     'version': 1,
@@ -2332,17 +2333,30 @@ from app.model import User  # 不能拿到最上面 所有的代码都必须等�
 ...
 ```
 
-## 单表查询(增删改查)
+## 单表查询
 
 ```python
 # django自带的sqlite3数据库对日期格式不是很敏感 处理的时候 容易出错
+
+# 单表环境准备 modes.py
+class User(models.Model):
+    name = models.CharField(max_length=32)
+    age = models.IntegerField()
+    reg_time = models.DateField()
+    """
+    DateField
+    DateTimeField
+    这2个字段有2个重要参数：
+      auto_now: 每次操作数据的时候 该字段会自动将当前时间更新
+      auto_now_add: 在每次创建数据的时候 会自动将当前创建时间记录下来 之后只要不人为的修改 那么就一直不变
+    """
 ```
 
 ### 增
 
 ```python
 # 1. create() 推荐 
-# create方法 返回当前增加对象本身 可以批量
+# create方法 返回当前增加对象本身
 res = User.objects.create(name='minhooo', age='18', register_time='2002-10-20')
 print(res)
 
@@ -2363,54 +2377,447 @@ pk会自动查找到当前表的主键字段 指代的就是当前表的主键�
 用了pk之后 你就不需要指定当前表的主键字段到底叫什么
 e.g: uid pid sid ...
 """
-# 1. delete() 推荐 可以批量
+# 1. delete() 推荐
 res = User.objects.filter(pk=3).delete()
 print(res)
 
-# 2. user_obj的delete()
+# 2. user_obj的delete() 先查再删 两条sql语句
 user_obj = User.objects.filter(pk=6).first()
 user_obj.delete()
 ```
 
-
-
-## 常见的十几种查询方法
+### 改
 
 ```python
+# 改 
+# 1. update()
+User.objects.filter(pk=4).update(name='lomen')
 
+# 获取user_obj 然后修改属性 调用save()更新
+user_obj = User.objects.get(pk=4)  # 不推荐使用get
+user_obj = User.objects.filter(pk=6)
+print(user_obj)
+user_obj.name = 'pomno'
+user_obj.save()
+"""
+get方法返回的直接就是当前数据对象
+但是不推荐使用该方法:
+  - get() 一旦数据不存在 该方法会直接报错
+  - filter() 不会报错 返回空QuerySet 还是使用filter
+"""
 ```
 
-
-
-## 神奇的双下划线查询
+### 必知必会13条
 
 ```python
+1. all()         # 查询所有数据
+2. filter()      # 带有过滤条件的查询   WHERE
+3. get()         # 直接拿数据对象 但是条件不存在直接报错
+4. first()       # 拿QuerySet对象的第一个元素
+5. last()        # 拿QuerySet对象的最后一个元素
 
+# 6 7 重要 经常使用
+6. values()  # 指定获取数据字段 select name, age from ...
+res = User.objects.values('name', 'age')
+print(res)   # 返回值类似 列表套字典
+>>> <QuerySet [{'name': 'Minho', 'age': 18}, {'name': 'pomno', 'age': 29}]>
+
+7. values_list()  # 用法同values 返回值类似 列表套元组
+
+8. distinct()  # 去重
+res = User.objects.values('name').distinct(
+"""
+去重一定要是一模一样的数据 如果带有主键 那么肯定不一样
+你在往后的查询中 一定不要忽略主键
+"""
+
+9. order_by()  # 排序
+res = User.objects.order_by('age')  # 默认升序
+res = User.objects.order_by('-age')  # 前面加- 降序
+
+10. reverse()  # 反转 反转的前提是 数据已经排过序
+# 需要用在order_by之后 所以用的不多
+res1 = User.objects.order_by('age').reverse()
+    
+11. count()  # 统计
+res = User.objects.count()
+    
+12. exclude()  # 排除在外 WHERE NOT
+res = User.objects.exclude(name='Minho')
+    
+13. exists()  # 基本用不到 返回布尔值
+# 直接拿前面的数据就可以进行布尔判断 随意基本用不到
+res = User.objects.filter(pk=10).exists()
+
+"""
+查看内部封装的SQL语句的方式
+  - 方式1：QuerySet_obj.query 只能用于queryset对象
+  - 方式2：所有的sql语句都能查看 配置文件配置 详见参考上面ORM详解
+"""
 ```
 
+### 双下划线查询
 
+```python
+# age 大于35 __gt
+res = User.objects.filter(age__gt=35)
+
+# age 小于35 __lt
+res = User.objects.filter(age__lt=35)
+
+# 小于等于__lte 大于等于__gte
+res = User.objects.filter(age__lte=29)
+res = User.objects.filter(age__gte=29)
+
+# 成员查询 age是 18 or 29 or 55 
+res = User.objects.filter(age__in=[18, 29, 55])
+
+# 范围查询 age是18到40之间 首尾都要
+res = User.objects.filter(age__range=[18, 55])
+
+# 查询名字里面含有n的数据 模糊查询
+# __contains LIKE BINARY
+res = User.objects.filter(name__contains='n')
+
+# 忽略大小写 __contains LIKE
+res = User.objects.filter(name__icontains='N')
+
+# __startswith __endswith
+res = User.objects.filter(name__startswith='M')
+res = User.objects.filter(name__endswith='o')
+
+# 查询出注册时间是 2020.1月份的数据
+# 按照月份 或者年份 等 查找数据
+res = User.objects.filter(reg_time__month='1')
+res = User.objects.filter(reg_time__year='2020')
+```
 
 ## 多表操作
 
 ```python
+# models.py 模型准备
+# 创建表关系 先将基表创建出来 然后再添加外键字段
+class Book(models.Model):
+    title = models.CharField(max_length=32)
+    price = models.DecimalField(max_digits=8, decimal_places=2)  # 小数总共8位 小数点后面占2位
+    publish_date = models.DateTimeField(auto_now_add=True)
+    """
+    图书和出版社是一对多 并且书是多的一方 所以外键字段放在book表里面
+    如果字段对应的是ForeignKey 那么ORM会自动在字段后面加_id -> publish_id
+    后面定义ForeignKey的时候 不要自己加_id
+    """
+    publish = models.ForeignKey(to='Publish', on_delete=models.CASCADE)  # 默认就是与出版社表的主键字段做外键关联 可以通过to_field设置
+    """
+    图书和作者是多对多关系 外键字段建在任意一方均可 但是推荐创建再查询频率较高的一方
+    authors是一个虚拟字段 主要是用来高速ORM 书籍表 和 作者表 是多对多关系 让ORM自动帮你创建第三张表关系
+    
+    django 1.x 自动级联更新删除 2.x 3.x需要加参数
+    """
+    authors = models.ManyToManyField(to='Author')
 
+class Publish(models.Model):
+    name = models.CharField(max_length=32)
+    address = models.CharField(max_length=64)
+    email = models.EmailField()
+    # 本质还是varchar(254) 该字段类型不是给models看的 而是给我们后面会学到的校验型组件看的
+    def __str__(self):
+        return "<Publish {}>".format(self.name)
+
+class Author(models.Model):
+    name = models.CharField(max_length=32)
+    age = models.IntegerField()
+    """
+    作者与作者详情是一对一关系 外键字段建在任意一方都可以 但是推荐创建在查询频率较高的表中
+    OneToOneField 也会自动给字段加_id后缀
+    """
+    author_detail = models.OneToOneField(to='AuthorDetail', on_delete=models.CASCADE)
+
+class AuthorDetail(models.Model):
+    phone = models.BigIntegerField()  # 电话号码用BigIntergerField或者直接用CharField
+    address = models.CharField(max_length=32)
 ```
 
+### 一对多
 
+**一对一 一对多外键的增删改查**
 
-## 外键字段的增删改查
+- **增**
 
 ```python
+# 1. 直接写外键实际字段 放fk_id
+models.Book.objects.create(title='三国演义', price=123.23, publish_id=1)
 
+# 2. 虚拟字段 放对象
+publish_obj = models.Publish.objects.filter(pk=2).first()
+models.Book.objects.create(title='红楼梦', price=666.32, publish=publish_obj)
 ```
 
+- **删**
 
+```python
+# 删
+models.Publish.objects.filter(pk=1).delete()  # django 1.x 默认级联删除
+```
+
+- 改
+
+```python
+# 修改
+# 1. 同增加
+models.Book.objects.filter(pk=2).update(publish_id=4)
+
+# 2. 同增加
+publish_obj = models.Publish.objects.filter(pk=2).first()
+models.Book.objects.filter(pk=2).update(publish=publish_obj)
+```
+
+### 多对多
+
+**多对多的 增删改查 就是在操作第三张表**
+
+- **增**
+
+```python
+# 如何给书籍添加作者
+book_obj = models.Book.objects.filter(pk=4).first()
+print(book_obj.authors)  
+# 第三张表不是我们创建 无法获取model
+# book_obj.authors 就类似于你已经取到了第三张表
+
+# add() 传主键id
+book_obj.authors.add(1)   # 书籍ID为2的书籍 绑定一个主键为1的作者
+book_obj.authors.add(2, 3)   # 添加多个作者
+
+# add() 传对象
+author_obj = models.Author.objects.filter(pk=1).first()
+author_obj2 = models.Author.objects.filter(pk=2).first()
+author_obj3 = models.Author.objects.filter(pk=3).first()
+book_obj.authors.add(author_obj2, author_obj3)
+"""
+add给第三张关系表添加数据
+括号内 既可以传对象 也可以传数字(id) 并且都支持传多个值
+"""
+```
+
+- **删**
+
+```python
+# 删
+book_obj = models.Book.objects.filter(pk=4).first()
+
+# 传id
+book_obj.authors.remove(2)
+book_obj.authors.remove(1, 3)
+
+# 传对象
+author_obj = models.Author.objects.filter(pk=3).first()
+author_obj2 = models.Author.objects.filter(pk=2).first()
+book_obj.authors.remove(author_obj, author_obj2)
+```
+
+- 改
+
+```python
+# 改
+book_obj = models.Book.objects.filter(pk=2).first()
+
+# 传id
+book_obj.authors.set((1, 2))  # 括号内必须给一个可迭代对象
+book_obj.authors.set((3,))  # 先删除数据 再增加
+
+# 传对象
+author_obj = models.Author.objects.filter(pk=3).first()
+author_obj2 = models.Author.objects.filter(pk=2).first()
+book_obj.authors.set([author_obj, author_obj2])
+"""
+set()
+  括号内必须传一个可迭代对象 该可迭代对象内 既可以传对象 也可以传数字(id) 都支持多个
+"""
+```
+
+- **清空**
+
+```python
+# 清空
+# 在第三张关系表中 清空某个书籍与作者的绑定关系
+# DELETE FROM `app02_book_authors` WHERE `app02_book_authors`.`book_id` = 2
+book_obj = models.Book.objects.filter(pk=2).first()
+book_obj.authors.clear()
+"""
+clear()
+  括号内不要加任何参数
+"""
+```
 
 ## 跨表查询(重点)
 
+```python
+# 正反向的概念
+看外键字段在哪儿
+外键字段在我手上 我查你就是正向
+否则 外键字段不在我手上 我查你就是反向
+
+# 正向 反向
+假设：
+一本书对应一个出版社 
+一个出版社可以出版多本书
+那么 外键字段在 书 这边
+正向：由 书 查询 出版社
+反向：由 出版社 查询 书
+
+book    >>> 外键字段在书哪儿(正向) >>> publish
+publish >>> 外键字段在书哪儿(反向) >>> book
+
+一对一和多对多的正反向判断也是如此
+
+"""
+正向查询按外键字段
+反向查询按表名小写
+         _set.all()
+"""
+
+"""
+多表操作
+  1. 子查询  
+    ORM --> 基于对象的跨表查询
+    - 先拿到一个数据对象
+    - 对象点点点 就能拿到对应的字段
+  
+  2. 联表查询
+    ORM --> 基于双下划线的跨表查询
+    
+    inner join
+    left join
+    right join
+    union
+"""
+
+1. 基于对象的跨表查询
+  # 正向 
+  book_obj.publish
+  book_obj.authors.all()
+  author_obj.author_detail
+    
+  # 反向
+  publish_obj.book_set  # App01.Book.None
+  publish_obj.book_set.all()
+  author_obj.book_set.all()
+  author_detail_obj.author
+
+2. 基于双下划线的跨表查询
+  # 等价的一对正向和反向查询
+  models.Book.objects.filter(pk=1).values('title', 'publish__name')
+  models.Publish.objects.filter(book__id=1).values('book__title', 'name')
+    
+  # 其他字段同理
+  # 利用双下划线的跨表查询 可以帮助你跨N多张表 只要有外键字段
+  models.Book.objects.filter(pk=1).values('authors__author_detail__phone')
+```
+
 ### 子查询
 
+**基于对象的跨表查询**
+
+- **正向**
+
+```python
+# 基于对象的跨表查询 先拿到关系字段在的对象
+
+# 1. 查询书籍主键为2的出版社名称
+book_obj = models.Book.objects.filter(pk=2).first()
+# 书查出版社 正向 按字段
+res = book_obj.publish
+print(res, res.name, res.address)
+
+# 2. 查询书籍主键为2的作者
+book_obj = models.Book.objects.filter(pk=4).first()
+# 书查作者 正向
+# res = book_obj.authors  # app02.Author.None 发现结果类似这样 ORM可能没错 少了 .all()
+res = book_obj.authors.all()  # <QuerySet [<Author: Author object (2)>, <Author: Author object (3)>]>
+print(res)
+
+# 3. 查询作者minho的电话号码
+author_obj = models.Author.objects.filter(name='minho').first()
+res = author_obj.author_detail
+print(res, res.phone, res.address)
+
+"""
+在书写ORM语句的时候 跟写sql语句一样的
+不要试图一次将orm语句写完 如果比较复杂 就写一点看一点
+
+正向什么时候需要加 .all()
+  当你的结果可能有多个的时候 就需要加 .all()
+  如果是一个结果 则直接能拿到数据对象
+    book_obj.publish
+    book_obj.authors.all()
+    author_obj.author_detail
+"""
+```
+
+- **反向**
+
+```python
+# 4. 查询出版社是东方出版社出版的书
+publish_obj = models.Publish.objects.filter(name='东方出版社').first()
+# 出版社查书 反向
+res = publish_obj.book_set  # app02.Book.None
+res = publish_obj.book_set.all()
+print(res)
+
+# 5. 查询作者是minho写过的书
+author_obj = models.Author.objects.filter(name='minho').first()
+# 作者查书 反向
+res = author_obj.book_set  # app02.Book.None
+res = author_obj.book_set.all()
+print(res)
+
+# 5. 查询手机号是110的作者姓名
+author_detail_obj = models.AuthorDetail.objects.filter(phone='110').first()
+res = author_detail_obj.author
+print(res, res.name)
+"""
+基于对象 反向查询的时候
+  当你的查询结果可以有多个的时候 就必须加 _set.all()  一对多 多对多 反向查询
+  当你的结果只有一个的时候 不需要加 _set.all()  一对一反向查询
+"""
+```
+
 ### 联表查询
+
+**基于双下划线的跨表查询**
+
+```python
+# 1. 查询minho的手机号
+res = models.Author.objects.filter(name='minho').values('author_detail__phone', 'name')
+print(res)
+# 反向
+res = models.AuthorDetail.objects.filter(author__name='minho').values('phone', 'author__name')  # 拿作者姓名是minho的作者详情
+print(res)
+
+# 2. 查询书籍为2的出版社名称 和 书的名称
+res = models.Book.objects.filter(pk=2).values('publish__name', 'title')
+print(res)
+# 反向
+res = models.Publish.objects.filter(book__id=2).values('name', 'book__title')
+print(res)
+
+# 3. 查询书籍主键为3的作者姓名
+res = models.Book.objects.filter(pk=3).values('authors__name')
+print(res)
+# 反向
+res = models.Author.objects.filter(book__id=3).values('name')
+print(res)
+
+
+# 查询书籍主键是2的作者的手机号
+# 涉及：book author authordetail
+res = models.Book.objects.filter(pk=3).values('authors__author_detail__phone')
+print(res)
+"""
+只要掌握了正反向的概念 以及双下划线查询
+那么你就可以无限制的跨表
+"""
+```
 
 ## 聚合查询
 
