@@ -3313,6 +3313,34 @@ for i in res:
 # select_related与prefetch_related各有优缺点 不一定谁一定好 根据实际请况来看
 ```
 
+## 批量插入数据
+
+```python
+# 循环一次次插入数据
+from . import models
+
+def ab_pl(request):
+    # 先给book插入10000条数据
+    for i in range(10000):
+        models.Book.objects.create(title='第{}本书'.format(i))
+    # 再将所有的数据查询并展示到前端页面
+    book_queryset = models.Book.objects.all()
+    return render(request, 'ab_pl.html', locals())
+
+    # 这个时候访问指向该视图函数的url的时候 页面会一致转圈 卡顿很久(根据数据量决定) - 慢 甚至超时
+
+def ab_pl(request):
+    """
+    当你想要批量插入数据的时候 使用orm给你提供的bulk_create能够大大的减少操作时间
+    INSERT INTO `app01_book` (`title`) VALUES ('第0本书'), ('第1本书'), ...
+    """
+    # 批量插入 极快
+    book_list = [models.Book(title="第{}本书".format(i)) for i in range(10000)]
+    models.Book.objects.bulk_create(book_list)
+    book_queryset = models.Book.objects.all()
+    return render(request, 'ab_pl.html', locals())
+```
+
 
 
 ------
