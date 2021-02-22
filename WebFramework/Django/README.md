@@ -54,8 +54,8 @@
     - 拿到 直接返回
     - 没拿到 走正常流程 然后存一份到缓存数据库并返回
     
-当你在修改你的数据的时候 你会发现数据并不是立即修改完的
-而是需要经过一段时间才会修改(还在访问的缓存的内容)
+当你在修改数据的时候 你会发现数据并不是立即修改完的
+而是需要经过一段时间才会修改(还在访问缓存的内容)
 """
 ```
 
@@ -201,7 +201,7 @@ app就类似大虚额里面的各个学院(学院--具体功能的app)
 # Application definition
 """
 一定要注册 否则应用不生效
-创建出来的应用 第一步先去配置文件中注册 其他的先不要给我改
+创建出来的应用 第一步先去配置文件中注册
 备注: 在使用Pycharm创建项目的时候 Pycharm可以帮你创建一个app并自动注册(仅一个)
 """
 
@@ -327,10 +327,6 @@ from django.shortcuts import render
 
 # Create your views here.
 def index(request):
-    """
-    :param request: 请求相关的所有数据对象 比之前的environ更好用 是对象 直接. 取属性 比字典好用
-    :return:
-    """
     return render(request, 'myfirst.html')
 
 # 命令行创建 需要配置模板目录
@@ -352,7 +348,7 @@ def index(request):
     
     2. local()
     locals() 会将所在的名称空间中所有的名字全部传递给HTML页面
-    当需要传的数值特别多的时候 使用 locals() 传值
+    当需要传的变量特别多的时候 使用 locals() 传值
     """
     user_dict = {'username': 'Minho', 'age': 25}
     # render 传值 1.
@@ -371,10 +367,6 @@ from django.shortcuts import redirect
 
 # Create your views here.
 def index(request):
-    """
-    :param request: 请求相关的所有数据对象 比之前的environ更好用 是对象 直接. 取属性 比字典好用
-    :return:
-    """
     # return redirect('https://www.baidu.com/')  # 重定向到外部网址
     return redirect('/home/')  # 302重定向到 自己的网站 /home/
 
@@ -575,7 +567,7 @@ def login(request):
 - **request.POST**
 
 ```python
-# 获取用户post请求提交的普通数据 不包含文件
+# 获取用户post请求提交的普通数据(Form) 不包含文件
 request.POST
   - request.PSOT.get()      # 只获取列表最后一个元素
   - request.POST.getlist()  # 直接将整个列表取出
@@ -841,6 +833,7 @@ verbose_name  # 该参数是所有字段都有的 用来对字段的解释
 
 ```python
 # 给表增加字段的时候 表里面已经有数据的情况
+# **增加外键字段的时候 给的默认值 需要先在对应表中存在 否则迁移报错**
 1. 可以在终端内直接给出默认值 django命令行会在终端给出选择
     $ You are trying to add a non-nullable field 'age' to user without a default; we can't do that (the database needs something to populate exi
     sting rows).
@@ -1003,10 +996,7 @@ def edit_user(request):
         return redirect('/userlist/')
 
     # 将数据对象展示到页面上
-    return render(request, 'edit_user.html', {'user_info': user_obj}
-
-# 删除功能
-
+    return render(request, 'edit_user.html', {'user_info': user_obj})
 ```
 
 ### 删
