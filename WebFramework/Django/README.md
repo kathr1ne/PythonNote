@@ -1840,6 +1840,74 @@ def ab_json(request):
 
 ------
 
+## Django自带的序列化组件
+
+**DRF铺垫**
+
+```python
+# 需求：在前端给我获取到后端用户表里面的所有数据 需要是列表套字典
+
+# json格式化校验 
+https://www.bejson.com/  
+```
+
+- **JsonResponse**
+
+**json.dumps 不再演示**
+
+```python
+from app02 import models
+def user_ser(request):
+    # 返回 [{}, {}, {}, {}]
+    user_queryset = models.User.objects.values()
+    # data = [user for user in user_queryset]
+    data = list(user_queryset)
+    return HttpResponse(JsonResponse(data, safe=False))
+
+
+# OR 自定构造字典结构
+from app02 import models
+def user_ser(request):
+    # 返回 [{}, {}, {}, {}]
+    user_queryset = models.User.objects.all()
+    data = []
+    for user_obj in user_queryset:
+        tmp = {
+            'pk': user_obj.pk,
+            'name': user_obj.name,
+            'age': user_obj.age,
+            'gender': user_obj.get_gender_display(),
+        }
+        data.append(tmp)
+    return HttpResponse(JsonResponse(data, safe=False))
+
+"""
+前后端分离的项目：
+  - 作为后端 只需要写代码将数据处理好
+  - 序列化返回给前端即可
+  - 再写一个接口文档 告诉前端每个字段代表的意思
+"""
+```
+
+- **serializers**
+
+```python
+from app02 import models
+from django.core import serializers
+def user_ser(request):
+    user_queryset = models.User.objects.all()
+    """
+    会自动帮你将数据变成json格式的字符串 并且内部非常的全面
+    写接口 就是利用序列化组件渲染数据 然后写一个接口文档
+    """
+    res = serializers.serialize('json', user_queryset)
+    return HttpResponse(res)
+
+"""
+使用序列化组建 封装程度更高 需要你写的代码更少
+"""
+```
+
 ## Form表单上传文件及后端如何操作
 
 ```python
