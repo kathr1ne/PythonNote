@@ -1152,6 +1152,102 @@ ORM中如何定义三种关系
 """
 ```
 
+### 多对多的三种创建关系
+
+**需要掌握 全自动 和 半自动(扩展性很高 一般情况下都采用半自动)**
+
+- **全自动**
+
+```python
+# 利用ORM 自动帮我们创建第三张关系表
+class Book(models.Model):
+    name = models.CharField(max_length=32)
+    authors = models.ManyToManyField(to='Author')
+    
+class Author(models.Model):
+    name = models.CharField(max_length=32)
+    
+"""
+优点： 
+  - 第三张关系表的model代码 不需要自己写
+  - 支持ORM提供操作第三张关系表的方法(add clear remove 正反向查询...)
+  
+缺点：
+  -  第三张关系表的拓展性极差 没有办法额外添加字段
+"""
+ 
+```
+
+- **纯手动**
+
+**不建议使用该方式**
+
+```python
+# 自己书写 第三张关系表
+class Book(models.Model):
+    name = models.CharField(max_length=32)
+    
+class Author(models.Model):
+    name = models.CharField(max_length=32)
+    
+class Book2Author(models.Model):
+    book = models.ForeignKey(to='Book')
+    author = models.ForeignKey(to='Author')
+    
+"""
+优点：
+  - 第三张表完全取决于你自己 进行额外扩展
+
+缺点：
+  - 需要自己写第三张关系表的model代码
+  - 不能够再使用ORM提供的简单方法
+"""
+```
+
+- **半自动**
+
+```python
+# 还是手动创建第三张关系表
+# 然后通过字段参数 解决全手动创建带来的缺点 无法使用ORM提供的方法
+
+class Book(models.Model):
+    name = models.CharField(max_length=32)
+    # 利用额外参数 告诉ORM 第三张关系表我已经手动创建 你参考就行 不必再自动创建
+    # 多对多外键字段 可以写在任意一方 这里写在哪一边 会影响到through_fields参数的字段顺序
+    # 写在book表 through_fields=('book', 'author')
+    author = models.ManyToManyField(to='Author', 
+                                    through='Book2Author',
+                                    through_fields=('book', 'author')
+                                   )
+    
+class Author(models.Model):
+    name = models.CharField(max_length=32)
+    # OR 写在author表 through_fields=('author', 'book')
+    # author = models.ManyToManyField(to='Author', 
+    #                                 through='Book2Author',
+    #                                 through_fields=('author', 'book')
+    #                                )
+    
+class Book2Author(models.Model):
+    book = models.ForeignKey(to='Book')
+    author = models.ForeignKey(to='Author')
+    
+"""
+through_fields=('xx', 'oo')
+
+through_fields字段先后顺序：
+  本质：由第三张关系表 查询外键所在表 通过(第三张表)哪个字段 就把该字段放在前面一个参数
+  总结：简化判断 -> 当前表(外键字段所在的表)是谁 就把对应的关联字段放前面
+"""
+
+"""
+半自动不足：
+  可以使用orm的正反向查询 但是没法使用 add set remove clear这4个方法
+"""
+```
+
+
+
 ------
 
 
@@ -3047,6 +3143,88 @@ class MyCharField(models.Field):
                                  
 # 使用
 myfield = MyCharField(max_length=16, null=True)
+```
+
+## choices参数
+
+**数据库字段设计常见**
+
+**choicesc参数 在实际项目中 使用场景是非常广泛的**
+
+[Field.choices](https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/#choices)
+
+```python
+"""
+用户表
+  - 性别
+  - 学历
+  - 工作经验
+  - 是否结婚
+  - 客户来源
+  ...
+  
+针对某个可以列举完全的可能性字段 我们应该如何存储?
+总结：只要某个字段的可能性是可以列举完全的 那么一般情况下 都会采用choices参数
+"""
+
+score_choices = [
+    ('A', '优秀'),
+    ('B', '良好'),
+    ('C', '及格'),
+    ('D', '不及格')
+]
+# 保证字段类型 跟列举出来的元组的第一个数据类型一致即可
+score = models.CharField(choices=score_choices)
+```
+
+- **model准备**
+
+```python
+# model准备
+class User(models.Model):
+    name = models.CharField(max_length=32)
+    age = models.IntegerField()
+    # 性别字段
+    # 存布尔值 不是特别合理 没有对应关系 True/Flase分别对应什么性别?
+    # gender = models.BooleanField()
+    gender_choices = [
+        (1, '男'),
+        (2, '女'),
+        (3, '其他'),
+    ]
+    gender = models.IntegerField(choices=gender_choices)  # 看choices里面元组的第一个元素是什么类型 就是什么字段
+    """
+    该gender字段存的还是数字 但是如果存的数字在上面元组列举的范围之内
+    那么就可以非常轻松的获取到数字对应的真正的内容
+    
+    1. gender字段存的数字 不在上述元组列举的范围内容?
+    
+    2. 如果在 如何获取对应的中文信息?
+    """
+    def __str__(self):
+        return "<User {}>".format(self.name)
+```
+
+- **测试**
+
+```python
+# 增
+# 存的时候 没在choices列举的范围之内的数字 也能存进去
+# 存的数据范围 还是按照字段类型决定 IntegerField
+models.User.objects.create(name='mm', age=18, gender=1, register_time='2020-10-1')
+models.User.objects.create(name='nn', age=67, gender=2, register_time='2020-10-1')
+models.User.objects.create(name='bb', age=22, gender=3, register_time='2020-10-1')
+models.User.objects.create(name='vv', age=9, gender=4, register_time='2020-10-1')
+
+# 取
+user_obj = models.User.objects.filter(pk=10).first()
+# print(user_obj.gender)
+# 只要是choices参数的字段 如果你想要获取对应信息 固定写法: get_字段名_display()
+print(user_obj.get_gender_display())
+
+# 如果没有对应关系 字段是什么还是展示什么
+user_obj = models.User.objects.filter(pk=12).first()
+print(user_obj.get_gender_display())
 ```
 
 ## 数据库查询优化
