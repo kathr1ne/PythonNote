@@ -11,14 +11,14 @@
 ```python
 """
 浏览器发送请求 => WEB网关服务接口 => Django框架
-                                 -> 中间件 middleware (-> 缓存数据库 拿到则返回)
-                                 -> 路由层 urls.py
-                                 -> 视图层 views.py
+                                  -> 中间件 middleware (-> 缓存数据库 拿到则返回)
+                                  -> 路由层 urls.py
+                                  -> 视图层 views.py
                                     -> 模板层 templates
                                     -> 模型层 modes.py
-                                 -> 拿到数据/模板 渲染后按路径返回
+                                  -> 拿到数据/模板 渲染后按路径返回
                             
-请求经过WEB网关服务接口 需要了解：
+请求经过WEB网关服务接口：
   - django自带的是wsgiref
     1. 请求来的时候 解析请求 并封装为request对象
     2. 响应走的时候 打包处理
@@ -29,7 +29,7 @@
     - WSGI 是协议
     - wsgiref/uwsgi是实现该协议的功能模块
     
-请求经过Django框架 需要了解：
+请求经过Django框架：
   -> 先经过Django中间件(类似与django的保安 门户)
   -> 路由层 urls.py 路由匹配与分发 识别路由匹配对应的视图函数
   -> 视图层 views.py 网站整体的业务逻辑
@@ -84,31 +84,31 @@
 
 ```bash
 # 安装django == 指定安装版本
-$ pip install django==x.x.x
+pip install django==x.x.x
 
 # e.g. 直接安装 会自动卸载旧的安装新的
-$ pip install django==1.11.11
+pip install django==1.11.11
 
 # 验证是否安装成功
-$ django-admin  # 看是否输出帮助文档
+django-admin  # 看是否输出帮助文档
 ```
 
-## django基本操作
+## Django基本操作
 
 - **命令行操作**
 
 ```python
 # 1. 创建django项目
 # 如果已经实现创建项目目录 [目录] 直接换为 .(当前目录)
-$ django-admin startproject [项目名] [目录]
-$ django-admin startproject [name] .
+django-admin startproject [项目名] [目录]
+django-admin startproject [name] .
 
 # e.g.
-$ cd MinhoDjango  # 进入已存在的目录 作为项目根目录
-$ django-admin startprojcet mysite .
+cd MinhoDjango  # 进入已存在的目录 作为项目根目录
+django-admin startprojcet mysite .
 
 # 2. 启动django目录
-$ python manage.py runserver  # 默认: 127.0.0.1:8080
+python manage.py runserver  # 默认: 127.0.0.1:8080
 
 
 # 3. 创建应用
@@ -121,7 +121,7 @@ Next, start your first app by running python manage.py startapp [app_label].
   - web
   - ...
 """
-$ python manage.py startapp app01
+python manage.py startapp app01
 ```
 
 - **Pycharm创建**
@@ -213,8 +213,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'app01.apps.App01Config',  # 全写
-    'app01',  # 简写
-    'app02',
+    'app02',  # 简写
 ]  # 全写 or 简写 选择其中一种即可
 
 ```
@@ -714,7 +713,7 @@ LOGGING = {
         },
     },
     'loggers': {
-        # django 2.1.4之前的版本 该配置无效 无法看到对象的SQL语句 显示为None
+        # 本地 django 2.1.4及之前的版本 该配置无效 无法看到对象的SQL语句 显示为None
         'django.db.backends': {
             'handlers': ['console'],
             'level': 'DEBUG',
@@ -733,6 +732,10 @@ pymysql.install_as_MySQLdb()
 
 mysqlcilent  # c语言编写 速度快 推荐
 pymsyql      # python原生 兼容度高
+
+# 备注：使用pymysql 去项目配置文件所在目录的__init__.py文件加入以下内容
+import pymysql
+pymysql.install_as_MySQLdb() 
 ```
 
 **设置sql_mode**
@@ -882,11 +885,11 @@ $ python manage.py migrate
 
 ## 数据的增删改查
 
-[`QuerySet` API 参考](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/)
+[QuerySet API 参考](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/)
 
 ### 查
 
-[filter](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/#filter)
+[QuerySet.filter](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/#filter)
 
 ```python
 # 查
@@ -921,7 +924,7 @@ def login(request):
 
 ### 增
 
-[create](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/#create)
+[QuerySet.create](https://docs.djangoproject.com/zh-hans/3.1/ref/models/querysets/#create)
 
 ```python
 # create 返回当前被创建的对象本身
