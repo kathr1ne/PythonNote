@@ -1904,7 +1904,7 @@ def user_ser(request):
     return HttpResponse(res)
 
 """
-使用序列化组建 封装程度更高 需要你写的代码更少
+使用序列化组件 封装程度更高 需要你写的代码更少
 """
 ```
 
