@@ -824,7 +824,7 @@ $ python manage.py migrate  # 将操作真正的同步到数据库中
 
 ### 字段类型
 
-https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/
+[DjangoORM字段类型参考](https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/)
 
 ```python
 CharField     # 必须要指定 max_length参数 不指定会直接报错
@@ -1151,21 +1151,6 @@ ORM中如何定义三种关系
 3. 针对外键字段里面的其他参数 暂时不做考虑 详情可以参考上面官网链接
 """
 ```
-
-**on_delete参数补充**
-
-[ForeignKey.on_delete](https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/#django.db.models.ForeignKey.on_delete)
-
-```python
-on_delete=models.CASCADE,     # 删除关联数据,与之关联也删除
-on_delete=models.DO_NOTHING,  # 删除关联数据,什么也不做
-on_delete=models.PROTECT,     # 删除关联数据,引发错误ProtectedError
-on_delete=models.SET_NULL,    # 删除关联数据,与之关联的值设置为null（前提该字段需要设置为可空,一对一同理）
-on_delete=models.SET_DEFAULT, # 删除关联数据,与之关联的值设置为默认值（前提FK字段需要设置默认值,一对一同理）
-on_delete-models.SET(),       # 删除之后执行一个函数
-```
-
-
 
 ------
 
@@ -2984,9 +2969,9 @@ print('执行其他操作')
 
 ## orm中常用字段及参数
 
-[博客参考](https://www.cnblogs.com/Dominic-Ji/p/9203990.html)
+[DjangoORM字段类型参考](https://docs.djangoproject.com/zh-hans/3.1/ref/models/fields/)
 
-**也可直接参考官网文档**
+[博客参考](https://www.cnblogs.com/Dominic-Ji/p/9203990.html)
 
 ```python
 AutoField
@@ -3067,9 +3052,87 @@ myfield = MyCharField(max_length=16, null=True)
 ## 数据库查询优化
 
 ```python
-# only与defer
+"""
+ORM语句的特点：惰性查询
+  如果你仅仅只是书写了ORM语句 在后面根本没有用到该语句查询出来的参数
+  那么ORM会自动识别 直接不执行
+  要用到数据的时候 才会走数据库
+"""
 
-# select_related与prefetch_related
+# only 与 defer
+# select_related 与 prefetch_related
+```
+
+### only与defer
+
+```python
+# only
+# 获取user表中 所有用户的名字
+res = User.objects.values('name')
+for d in res:
+    print(d.get('name'))
+
+# 实现 获取到的是一个数据对象 然后 点name就能拿到名字 并且没有其他字段
+# only使用
+res = User.objects.only('name')
+for d in res:
+    print(d.name)  # 点only括号内的字段 不会走数据库
+    print(d.age)   # 点only括号内没有的字段 会重新走数据库字段 而all()不需要
+    
+# defer使用
+res = User.objects.defer('name')  # 还是返回数据对象 除了没有name属性之外 其他的都有
+for i in res:
+    print(i.name)  # 5条SQL
+    print(i.age)   # 1条SQL
+
+"""
+defer与only刚好相反
+  defer括号内放的字段不在查询出来的对象里面 查询该字段需要重新走数据库
+  而如果查询的是非括号内的字段 则不需要走数据库
+  
+总结：
+  - only  只会缓存指定字段的结果 后面循环去取指定字段 只会有1条SQL 取其他字段 N条SQL
+  - defer 会缓存除指定字段以外的全部字段结果 后面循环取指定字段 N条SQL 取其他字段 1条SQL
+"""
+```
+
+### select_related与prefetch_related
+
+**跟跨表操作有关**
+
+```python
+
+res = models.Book.objects.all()
+for i in res:
+    print(i.publish.name)  # 每循环一次 就走一次数据库查询
+
+# select_related
+"""
+select_related 内部直接先将book与publish连起来 
+然后一次性将大表里面的所有数据 全部封装给查询出来的对象
+这个时候对象无论是点击book表的数据 还是publish的数据 都无需再走数据库查询了
+
+注意事项：
+  select_related括号内 只能放外键字段：
+    - 一对一 一对多 可以
+    - 多对多 不行 抛出异常
+
+"""
+res = models.Book.objects.select_related('publish')  # INNER JOIN 联表
+for i in res:
+    print(i.publish.name)
+    
+# prefetch_related 
+res = models.Book.objects.prefetch_related('publish')  # 子查询
+"""
+prefetch_related 该方法内部其实就是子查询
+  将子查询查询出来的所有结果也给你封装到对象中
+  给你的感觉好像也是一次性搞定的
+"""
+for i in res:
+    print(i.publish.name)
+    
+# select_related与prefetch_related各有优缺点 不一定谁一定好 根据实际请况来看
 ```
 
 
