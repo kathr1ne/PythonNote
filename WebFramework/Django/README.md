@@ -3396,6 +3396,344 @@ def ab_pl(request):
     return render(request, 'ab_pl.html', locals())
 ```
 
+# Forms组件
+
+[使用表单](https://docs.djangoproject.com/zh-hans/3.1/topics/forms/)
+
+## 前戏
+
+```python
+"""
+写一个注册功能
+  获取用户名和密码 利用form表单提交数据
+  在后端判断用户名和密码 是否符合一定的条件
+    - 名字中不能含有 金瓶梅
+    - 密码不能少于三位
+  如果符合条件 需要你将提示信息展示到前s端页面
+"""
+```
+
+- **V1版本 自己实现**
+
+```python
+# VIEW
+def ab_form(request):
+    back_dic = {'username': '', 'password': ''}
+    """
+    无论是post请求还是get请求 页面都能够获取到字典
+    只不过get请求来的时候 字典值都是空的
+    而post请求来之后 字典可能有值
+    """
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        if '金瓶梅' in username:
+            back_dic['username'] = '不符合社会主义核心价值观'
+        if len(password) < 3:
+            back_dic['password'] = '密码不能太短'
+    return render(request, 'ab_form.html', locals())
+
+# HTML
+<form action="" method="post">
+    <p>username:
+        <input type="text" name="username">
+        <span style="color: red">{{ back_dic.username }}</span>
+    </p>
+    <p>password:
+        <input type="password" name="password">
+        <span style="color: red">{{ back_dic.password }}</span>
+    </p>
+    <input type="submit">
+</form>
+```
+
+- **V2版本 使用form组件**
+
+```python
+"""
+V1版本中 需要自己做下面三件事情
+  1. 手动书写前端获取用户数据的html代码  -> 渲染html代码
+  2. 后端对用户数据进行校验            -> 校验数据
+  3. 对不符合要求的数据进行前端提示      -> 展示提示信息
+  
+而form组件 可以把这三件事情 全部搞定
+  - 校验规则 可以直接由form组件完成 不需要频繁请求后端
+  - 把校验规则 提前告诉form组件
+  
+为什么数据校验非要去后端 不能在前端利用js直接完成呢?
+  - 数据校验 前端可有可无 但是后端必须要有
+  - 前端的校验是弱不禁风的 你可以直接修改 或者利用爬虫程序绕过前端页面直接朝后端提交数据
+ 
+  e.g:
+    购物网站 - 选取货物之后 计算一个价格发送给后端 如果后端不做价格校验
+      实际是获取用户选择的所有商品的主键值 然后在后端查询出所有商品的价格 再次计算一遍
+      如果跟前端一致 完成支付 如果不一致直接拒绝
+"""
+```
+
+## 基本使用
+
+```python
+from django import forms
+class MyForm(forms.Form):
+    # username字符串最小3位 最大8位
+    username = forms.CharField(min_length=3, max_length=8)
+    # password字符串最小3位 最大8位
+    password = forms.CharField(min_length=3, max_length=8)
+    # email字段必须符合邮箱格式
+    email = forms.EmailField()
+```
+
+## 校验数据
+
+**环境准备及基本使用**
+
+```python
+"""
+1. 测试环境的准备 可以自己拷贝代码准备
+2. 其实在pycharm里面已经帮你准备了一个测试环境
+    - 直接点击pycharm底部的 PythonConsole 它会帮你准备测试环境 导入相关模块
+"""
+
+>>> from app02 import views
+
+# 1. 将待校验的数据组织成字典的形式传入(传递给需要验证的Form)
+>>> form_obj = views.MyForm({'username':'minho', 'password':'123', 'email':'123'})
+
+# 2. 验证数据是否合法 该方法只有在所有数据全部合法的请况下才会返回True
+>>> form_obj.is_valid()    
+False
+
+# 3. 查看所有校验通过的数据
+>>> form_obj.cleaned_data
+{'username': 'minho', 'password': '123'}
+
+# 4. 查看所有不符合校验规则以及不符合的原因
+# 返回字典 key:验证字段 value:列表(报错信息不唯一 可能有多个)
+>>> form_obj.errors    
+{
+    'email': ['Enter a valid email address.']
+}
+
+# 5. 校验数据只校验类中出现的字段 多传不影响 多传字段直接忽略
+>>> form_obj = views.MyForm({'username':'minho', 'password':'123', 'email':'123@qq.com', 'hobby':'study'})
+>>> form_obj.is_valid()
+True
+>>> form_obj.errors
+{}
+
+# 6. 校验数据 默认请况下 类里面所有的字段都必须传值
+>>> form_obj = views.MyForm({'username':'minho', 'password':'123'})
+>>> form_obj.is_valid()
+False
+>>> form_obj.errors
+{'email': ['This field is required.']}
+
+"""
+校验数据的时候 默认情况下：数据可以多传但是绝不能少传
+"""
+```
+
+## 渲染标签
+
+**forms组件只会自动帮你渲染用户输入的标签(input select radio checkbox) 不会帮你渲染提交按钮**
+
+```python
+# view
+def index(request):
+    # 1. 先产生一个空对象
+    form_obj = MyForm()
+    # 2. 直接将该空对象传递给html页面
+    return render(request, 'index.html', locals())
+
+# 前端利用空对象做操作
+<form action="" method="post">
+    <p>第1种渲染方式: 代码书写极少 封装程度太高 不便于后续扩展 一般情况下只在本地测试使用</p>
+    {{ form_obj.as_p }}
+    {{ form_obj.as_ul }}
+    {{ form_obj.as_table }}
+    
+    <p>第2种渲染方式：可扩展性很强 但是书写代码太多 一般情况下不用</p>
+    <p>{{ form_obj.username.label }}: {{ form_obj.username }}</p>
+    <p>{{ form_obj.password.label }}: {{ form_obj.password }}</p>
+    <p>{{ form_obj.email.label }}: {{ form_obj.email }}</p>
+    
+    <p>第3种渲染方式：推荐使用 代码书写简单 并且扩展性也高</p>
+    {% for form in form_obj %}
+        <p>{{ form.label }}:{{ form }}</p>
+    {% endfor %}
+</form>
+
+"""
+label属性默认展示的是Form类中字段首字母大写的形式
+也可以自己修改 直接给字段对象加label属性即可
+  username = forms.CharField(min_length=3, max_length=8, label='用户名')
+"""
+```
+
+## 展示提示信息
+
+```python
+"""
+浏览器会自动帮你校验数据 但是前端的校验弱不禁风
+如何让浏览器不做校验?
+  - form标签加一个 novalidate属性
+"""
+
+# view
+def index(request):
+    # 1. 先产生一个空对象
+    form_obj = MyForm()
+    if request.method == 'POST':
+        # 2. 获取用户数据并检验
+        """
+        1. 数据获取繁琐
+        2. 校验数据需要构造成字典的格式传入才行
+        注意：request。POST可以看成就是一个字典
+        """
+        # 3. 校验数据
+        form_obj = MyForm(request.POST)
+        # 4. 判断数据是否合法
+        if form_obj.is_valid():
+            # 5. 如果合法 操作数据库存储数据库
+            return HttpResponse('ok')
+        # 5. 不合法 有错误
+    # 2. 直接将该空对象传递给html页面
+    return render(request, 'index.html', locals())
+
+
+# html
+<form action="" method="post" novalidate>
+    {% for form in form_obj %}
+        <p>
+            {{ form.label }}:{{ form }}
+            <span style="color: red">{{ form.errors.0 }}</span>
+        </p>
+    {% endfor %}
+    <input type="submit">
+</form>
+
+"""
+1. 必备的条件 get请求和post请求 传给html页面的对象变量名必须一样
+2. form组件当你的数据不合法的情况下 会保留你上次的数据 让你基于之前的结果进行修改 更加的人性化
+"""
+
+# 自定义错误提示信息 error_messages参数
+class MyForm(forms.Form):
+    username = forms.CharField(min_length=3, max_length=8, label='用户名',
+                               error_messages={
+                                   'min_length': '用户名最少3位',
+                                   'max_length': '用户名最大8位',
+                                   'required': '用户名不能为空'
+                               })
+    password = forms.CharField(min_length=3, max_length=8, label='密码',
+                               error_messages={
+                                   'min_length': '密码最少3位',
+                                   'max_length': '密码最大8位',
+                                   'required': '密码不能为空'
+                               })
+    email = forms.EmailField(label='邮箱', error_messages={
+        'invalid': '邮箱格式不正确',
+        'required': '邮箱不能为空'
+    })
+```
+
+## 钩子函数(hook)
+
+```python
+"""
+在特定的节点自动触发完成响应操作
+钩子函数在form组件中 就类似于第二道关卡 能够让我们自定义校验规则
+
+在forms组件中有2类钩子
+  1. 局部钩子
+    当你需要给单个字段增加校验规则的时候可以使用
+  
+  2. 全局钩子
+    当你需要给多个字段增加校验规则的时候可以使用
+"""
+
+# 实际案例
+1. 校验用户名中不能含有666    # 只是校验username字段 局部钩子
+
+2. 检验密码和确认密码是否一致  # password confirm两个字段 全局钩子
+
+# 钩子函数 在类里面书写方法即可
+class MyForm(forms.Form):
+    username = forms.CharField(...)
+    password = forms.CharField(...)
+    confirm_password = forms.CharField(...)
+    email = forms.EmailField(...)
+
+    # 钩子函数
+    # 局部钩子
+    def clean_username(self):
+        # 获取到用户名
+        username = self.cleaned_data.get('username')
+        if '666' in username:
+            # 展示错误信息
+            self.add_error('username', '不能包含666')
+        # 将钩子函数钩出去的数据(单个数据)再放回去
+        return username
+
+    # 全局钩子
+    def clean(self):
+        password = self.cleaned_data.get('password')
+        confirm_password = self.cleaned_data.get('confirm_password')
+        if not password == confirm_password:
+            self.add_error('confirm_password', '两次密码不一致')
+        # 将钩子函数钩出去的数据(全部数据)再放回去
+        return self.cleaned_data
+
+```
+
+## 重要参数
+
+[Django官网表单字段详解](https://docs.djangoproject.com/zh-hans/3.1/ref/forms/fields/)
+
+**forms组件 其他参数及补充知识点**
+
+```python
+label              自定义字段名
+error_messages     自定义报错信息
+initial            默认值
+required           是否必填 默认是True
+
+
+
+"""
+问题：
+1. 字段没有样式
+
+2. 针对不同类型的input如何修改
+  - text
+  - password
+  - date
+  - radio
+  - checkbox
+  ...
+
+
+# 处理文本输入的部件 widget参数解决
+https://docs.djangoproject.com/zh-hans/3.1/ref/forms/widgets/
+  widget=forms.PasswordInput
+
+# 调整样式 attrs参数解决
+# 多个属性值 直接空格隔开即可
+https://docs.djangoproject.com/zh-hans/3.1/ref/forms/widgets/#django.forms.Widget.attrs
+  widget=forms.TextInput(attrs={'class':'form-contral c1 c2'})
+"""
+
+validators      第一道关卡还支持正则校验
+参考：https://docs.djangoproject.com/zh-hans/3.1/ref/validators/
+validators=[RegexValidator(r'^[0-9]+$', '请输入数字'),
+            RegexValidator(r'^159[0-9]+$', '数字必须以159开头')]
+```
+
+## 其他字段类型
+
+[选择器和复选框部件](https://docs.djangoproject.com/zh-hans/3.1/ref/forms/widgets/#selector-and-checkbox-widgets)
+
 
 
 ------
