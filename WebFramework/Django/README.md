@@ -1,3 +1,8 @@
+---
+title: Django
+date: 2021-02-10 22:00:00
+---
+
 # Django
 
 [Django英文官方文档](https://docs.djangoproject.com/en/3.1/)
