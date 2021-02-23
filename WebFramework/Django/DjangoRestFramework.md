@@ -150,12 +150,12 @@ URL链接一般都采用https协议进行传输 注：采用https协议 可以�
    针对不同操作 服务器向用户返回的结果应该符合以下规范
 
 ```python
-GET /collection：返回资源对象的列表(数组)
-GET /collection/resource：返回单个资源对象
-POST /collection：返回新生成的资源对象
-PUT /collection/resource：返回完整的资源对象
-PATCH /collection/resource：返回完整的资源对象
-DELETE /collection/resource：返回一个空文档
+GET    /collection： 返回资源对象的列表(数组)
+GET    /collection/resource： 返回单个资源对象
+POST   /collection： 返回新生成的资源对象
+PUT    /collection/resource： 返回完整的资源对象
+PATCH  /collection/resource： 返回完整的资源对象
+DELETE /collection/resource： 返回一个空文档
 ```
 
 10. **Hypermedia API**
