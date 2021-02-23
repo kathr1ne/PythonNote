@@ -3734,6 +3734,118 @@ validators=[RegexValidator(r'^[0-9]+$', '请输入数字'),
 
 [选择器和复选框部件](https://docs.djangoproject.com/zh-hans/3.1/ref/forms/widgets/#selector-and-checkbox-widgets)
 
+## Forms组件源码
+
+```python
+"""
+切入点：
+  form_obj.is_valid()
+"""
+def is_valid(self):
+    """Return True if the form has no errors, or False otherwise."""
+    return self.is_bound and not self.errors
+    """
+    如果is_vaild要返回True的话 那么：
+      - self.is_bound()要为True
+      - self.errors()要为False
+    """
+    
+# 只要传值 那么self.is_bound就为True
+self.is_bound = data is not None or files is not None
+
+@property
+def errors(self):
+    """Return an ErrorDict for the data provided for the form."""
+    if self._errors is None:
+        self.full_clean()
+    return self._errors
+
+# forms组件所有的功能基本都出自于该方法
+def full_clean(self):
+    """
+    Clean all of self.data and populate self._errors and self.cleaned_data.
+    """
+    self._errors = ErrorDict()  # 创建类空字典
+    if not self.is_bound:  # Stop further processing.
+        return
+    self.cleaned_data = {}
+    # If the form is permitted to be empty, and none of the form data has
+    # changed from the initial data, short circuit any validation.
+    if self.empty_permitted and not self.has_changed():
+        return
+
+    # 这三行 整个forms组件精髓所在
+    self._clean_fields()    # 检验字段源码 + 局部钩子
+    self._clean_form()      # 全局钩子
+    self._post_clean()
+```
+
+### 校验字段/局部钩子源码解读
+
+```python
+def _clean_fields(self):
+    for name, field in self.fields.items():
+        # value_from_datadict() gets the data from the data dictionaries.
+        # Each widget type knows how to retrieve its own data, because some
+        # widgets split data over several HTML fields.
+        # 获取字段对应的用户数据
+        if field.disabled:
+            value = self.get_initial_for_field(field, name)
+        else:
+            value = field.widget.value_from_datadict(self.data, self.files, self.add_prefix(name))
+        try:
+            if isinstance(field, FileField):
+                initial = self.get_initial_for_field(field, name)
+                value = field.clean(value, initial)
+            else:
+                value = field.clean(value)
+            self.cleaned_data[name] = value  # 将合法的字段添加到cleaned_data
+            if hasattr(self, 'clean_%s' % name):  # 利用反射获取局部钩子函数
+                value = getattr(self, 'clean_%s' % name)()  # ()调用 局部钩子函数需要有返回值
+                self.cleaned_data[name] = value
+        except ValidationError as e:
+            self.add_error(name, e)  # 添加提示报错信息
+            
+# 得出钩子函数第二种验证字段不通过的报错方式
+# 局部钩子
+def clean_username(self):
+    # 获取到用户名
+    username = self.cleaned_data.get('username')
+    if '666' in username:
+        # 展示错误信息
+        # 报错方式1
+        # self.add_error('username', '不能包含666')
+        # 报错方式2 看源码得出 较为繁琐一般不用
+        raise ValidationError('不能包含未允许的数字')
+    # 将钩子函数钩出去的数据(单个数据)再放回去
+    return username
+```
+
+### 全局钩子源码解读
+
+```python
+def _clean_form(self):
+    try:
+        cleaned_data = self.clean()  # 全局钩子需要一个返回值 self.cleaned_data
+    except ValidationError as e:
+        self.add_error(None, e)
+    else:
+        if cleaned_data is not None:
+            self.cleaned_data = cleaned_data
+```
+
+### _post_clean
+
+```python
+"""forns内部预留钩子 An internal hook"""
+def _post_clean(self):
+    """
+    An internal hook for performing additional cleaning after form cleaning
+    is complete. Used for model validation in model forms.
+    """
+    pass
+```
+
 
 
 ------
