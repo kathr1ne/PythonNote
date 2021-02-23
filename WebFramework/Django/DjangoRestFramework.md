@@ -31,7 +31,7 @@ URL链接一般都采用https协议进行传输 注：采用https协议 可以�
 
 2. **接口特征性表现(一看就知道是API接口)**
 
-用api关键字表示接口url
+   用api关键字表示接口url
 
 ```python
 - https://api.example.com
@@ -41,7 +41,7 @@ URL链接一般都采用https协议进行传输 注：采用https协议 可以�
 
 3. **多版本共存**
 
-应该将API的版本放入URL(一种资源有多版本请况下)
+   应该将API的版本放入URL(一种资源有多版本请况下)
 
 ```python
 - https://api.example.com/v1/
@@ -52,7 +52,7 @@ URL链接一般都采用https协议进行传输 注：采用https协议 可以�
 
 4. **数据即是资源 均使用名字(复数) - 重要**
 
-接口一般都是完成前后台数据的交互 交互的数据我们称之为资源
+   接口一般都是完成前后台数据的交互 交互的数据我们称之为资源
 
 ```python
 - https://api.example.com/v1/zoos
@@ -68,7 +68,7 @@ URL链接一般都采用https协议进行传输 注：采用https协议 可以�
 
 5. **资源操作由请求方式决定(method) - 重要**
 
-操作资源一般都会设计到增删改查 我们提供请求方式来标识这些动作
+   操作资源一般都会设计到增删改查 我们提供请求方式来标识这些动作
 
 ```python
 - https://api.baidu.com/books  - GET请求：获取所有书
@@ -79,7 +79,7 @@ URL链接一般都采用https协议进行传输 注：采用https协议 可以�
 - https://api.baidu.com/books    DELETE请求：删除主键为1的书
 ```
 
-常用的HTTP动词有下面五个(括号里面是对应的SQL命令)
+   常用的HTTP动词有下面五个(括号里面是对应的SQL命令)
 
 ```python
 - GET(SELECT):    从服务器取出资源(一项或多项资源)
@@ -89,7 +89,7 @@ URL链接一般都采用https协议进行传输 注：采用https协议 可以�
 - DELETE(DELETE): 从服务器删除资源
 ```
 
-还有两个不常用的HTTP动词
+   还有两个不常用的HTTP动词
 
 ```python
 - HEAD: 获取资源的元数据
@@ -110,9 +110,9 @@ URL链接一般都采用https协议进行传输 注：采用https协议 可以�
 
 7. **状态码**
 
-[状态码完全列表](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)
+   [状态码完全列表](https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html)
 
-服务器向用户返回的状态码和提示信息
+   服务器向用户返回的状态码和提示信息
 
 ```python
 # 常见的有以下一些(方括号中是该状态码对应的HTTP动词)
@@ -147,7 +147,7 @@ URL链接一般都采用https协议进行传输 注：采用https协议 可以�
 
 9. **返回结果**
 
-针对不同操作 服务器向用户返回的结果应该符合以下规范
+   针对不同操作 服务器向用户返回的结果应该符合以下规范
 
 ```python
 GET /collection：返回资源对象的列表(数组)
