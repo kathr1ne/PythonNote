@@ -3777,7 +3777,7 @@ def full_clean(self):
     # 这三行 整个forms组件精髓所在
     self._clean_fields()    # 检验字段源码 + 局部钩子
     self._clean_form()      # 全局钩子
-    self._post_clean()
+    self._post_clean()      # An internal hook
 ```
 
 ### 校验字段/局部钩子源码解读
@@ -3837,13 +3837,237 @@ def _clean_form(self):
 ### _post_clean
 
 ```python
-"""forns内部预留钩子 An internal hook"""
+"""内部预留钩子 An internal hook"""
 def _post_clean(self):
     """
     An internal hook for performing additional cleaning after form cleaning
     is complete. Used for model validation in model forms.
     """
     pass
+```
+
+# Cookie和Session
+
+```python
+"""
+发展史：
+  1. 网站都没有保存用户功能的需求 所有用户访问返回的结果都是一样的
+    e.g: 新闻 博客 文章 ...
+   
+  2. 出现了一些需要保存用户信息的网站
+    e.g: 淘宝 支付宝 京东 ...  (需要知道你是谁)
+    
+    以登陆功能为例：如果不保存用户登陆状态 也就意味着用户每次访问网站都需要重复的输入用户名和密码(你觉得这样的网站 你还想用吗?)  
+    
+    当用户第一次登陆成功之后 将用户的 用户名密码 返回给用户浏览器 让用户浏览器保存在本地 之后访问网站的时候浏览器自动将保存在浏览器上的用户名和密码发送给服务端 服务端获取之后自动校验
+    早期这种方式具有非常大的安全隐患(能够直接看到)
+    
+    优化：
+      当用户登陆成功之后 服务端产生一个随机字符串(在服务端保存数据 用K:V键值对的形式) 交由客户端浏览器保存
+      随机字符串1：用户1相关信息
+      随机字符串2：用户2相关信息
+      随机字符串3：用户3相关信息
+      ...
+      之后访问服务端的时候 都带着该随机字符串 服务端去数据库中比对是否有对应的随机字符串从而获取到对应的用户信息
+      但是如果你拿到了(截获)该随机字符串 那么你就可以冒充当前用户 真实还是有安全隐患的
+    
+
+**在WEB领域 没有绝对的安全 也没有绝对的不安全**
+"""
+
+# cookie
+  - 服务端保存在客户端浏览器上的信息都可以称之为cookie
+  - 它的表现形式一般都是K:V键值对(可以有多个)
+    
+# session
+  - 数据是保存在服务端的 
+  - 并且它的表现形式一般也是K:V键值对(可以有多个)
+
+# token
+  - session虽然是保存在服务端的 但是经不住数据量大
+  - 服务端不再保存数据 
+    - 登陆成功之后 将一段信息用自己定制的加密方式(加密算法别人不知道)对内容进行加密处理 
+    - 然后将加密结果拼接在这段信息后面 整体返回给用户浏览器保存 [[信息内容][加密内容]]
+    - 浏览器下次访问的时候带着该信息 服务端自动切去前面一段信息再次使用自己的加密算法 跟浏览器尾部的密文进行比对
+    
+# jwt认证
+  三段信息
+    
+总结：
+  1. cookie就是保存在客户端浏览器上的信息
+  2. session就是保存在服务端上的信息
+  3. session是基于cookie工作的(其实大部分的保存用户状态的操作 都需要使用到cookie)
+```
+
+## Cookie操作
+
+```python
+"""
+虽然cookie是服务端告诉客户端浏览器需要保存的内容 但是客户端浏览器可以选择拒绝保存 如果禁止掉 那么只要是需要记录用户状态的网站 登陆功能都无法使用
+"""
+
+# 视图函数的返回值
+return HttpResponse()
+return render()
+return redirect()
+
+# 如果你想要操作cookie 你就不得不利用obj对象
+obj1 = HttpResponse()
+操作cookie
+return obj1
+
+obj2 = render()
+操作cookie
+return obj2
+
+obj3 = redirect()
+操作cookie
+return obj3
+```
+
+### 设置cookie
+
+```python
+# obj in [obj1, obj2, obj3]
+  obj.set_cookie(key, value)
+
+# 在设置cookie的时候 可以添加一个超时时间
+obj.set_cookie('username', 'minho123123', max_age=5, expires=5)
+  - max_age
+  - expires
+  这两个参数都是设置超时时间的 并且都是以秒为单位
+  需要注意的是 针对IE浏览器 需要使用expires
+
+# 如何主动删除cookie - 退出登录|注销
+@login_auth
+def logout(request):
+    obj = redirect('/app03/login/')
+    obj.delete_cookie('username')  # 删除cookie 实现退出登录注销功能
+    return obj
+```
+
+### 获取cookie
+
+```python
+# obj in [obj1, obj2, obj3]
+  request.COOKIES
+  request.COOKIES.get(key)
+```
+
+### 登录功能示例
+
+```python
+from django.shortcuts import render, HttpResponse, redirect, reverse
+
+def login(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        if username == 'minho' and password == '123':
+            # 保存用户登陆状态
+            obj = redirect(reverse('app03_home'))
+            # 让浏览器记录cookie
+            obj.set_cookie('username', 'minho123123')
+            """
+            浏览器不单单会帮你存
+            而且后面每次访问你的时候 还会带着它过来
+            """
+            # 跳转到一个需要用户登陆之后再能看的界面
+            return obj
+    return render(request, 'login.html')
+
+def home(request):
+    # 获取cookie信息 判断你有没有
+    if request.COOKIES.get('username') == 'minho123123':
+        return HttpResponse('我是home页面 只有登陆的用户才能进来')
+    # 没有登陆应该跳转到登陆页面
+    return redirect(reverse('app03_login'))
+```
+
+- **登陆检验简单装饰器**
+
+```python
+"""
+问题1：如果需要验证登陆的视图有非常多 这些写很冗余 -> 装饰器
+解决：校验用户是否登陆的简单装饰器
+"""
+def login_auth(wrapped):
+    def wrapper(request, *args, **kwargs):
+        if request.COOKIES.get('username'):
+            return wrapped(request, *args, **kwargs)
+        return redirect(reverse('app03_login'))
+    return wrapper
+```
+
+- **完整登陆代码示例**
+
+```python
+"""
+问题2：
+  有下面多个视图的情况下 我访问/index 会被重定向到/login
+  但是 我输入用户名密码登陆之后 自动跳转到/home 而不是我想访问的/index/
+  
+  用户如果在没有登陆的情况下 想访问一个需要登陆的页面
+  那么先跳转到登陆页面 当用户输入正确的用户名和密码之后
+  应该跳转到用户之前想要访问的页面去 而不是直接写死
+  
+解决：见下面稍微完整的登陆示例代码
+"""
+
+from django.shortcuts import render, HttpResponse, redirect, reverse
+
+def login_auth(wrapped):
+    def wrapper(request, *args, **kwargs):
+        # print(request.path)
+        # print(request.get_full_path())  # 能够获取到用户上一次想要访问的url
+        target_url = request.get_full_path()
+        if request.COOKIES.get('username'):
+            return wrapped(request, *args, **kwargs)
+        # return redirect('/login/?next={}'.format(target_url))
+        return redirect(reverse('app03_login') + '?next={}'.format(target_url))
+    return wrapper
+
+def login(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        if username == 'minho' and password == '123':
+            # 获取用户上一次想要访问的url
+            target_url = request.GET.get('next')  # 可能为None - 用户直接访问/login的情况
+            if target_url:
+                obj = redirect(target_url)
+            else:
+                # 保存用户登陆状态
+                obj = redirect(reverse('app03_home'))
+            # 让浏览器记录cookie
+            obj.set_cookie('username', 'minho123123')
+            """
+            浏览器不单单会帮你存
+            而且后面每次访问你的时候 还会带着它过来
+            """
+            # 跳转到一个需要用户登陆之后再能看的界面
+            return obj
+    return render(request, 'login.html')
+
+@login_auth
+def home(request):
+    return HttpResponse('我是home页面 只有登陆的用户才能进来')
+
+@login_auth
+def index(request):
+    return HttpResponse('Index Page, Need Login')
+
+@login_auth
+def users(request):
+    return HttpResponse('Users Page, Need Login')
+```
+
+
+
+## Session操作
+
+```python
+
 ```
 
 
