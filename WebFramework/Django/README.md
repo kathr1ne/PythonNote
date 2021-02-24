@@ -2082,6 +2082,8 @@ def dispatch(self, request, *args, **kwargs):
 """
 一个对象能够在运行时 像照镜子一样 反射出其类型信息
 简单说 在Python中 能够通过一个对象 找出其type class attribute或method的能力 成为反射或者自省
+
+Python源码里 使用最频繁的其实就是反射
 """
 
 具有反射能力的函数有:
@@ -2106,9 +2108,79 @@ __getattribute__  # 特殊 尽量不用
 | hasattr(object, name)            | 判断对象是否具有这个名字的属性 name必须为**字符串**          |
 
 
-
-
 - **settings源码剖析(尝试理解)**
+
+## CBV如何添加装饰器
+
+```python
+CBV中 django不建议你直接给类的方法加装饰器
+无论该装饰器能否正常工作 都不建议增加
+```
+
+### 加在CBV视图的具体方法上
+
+```python
+from django.views import View
+from django.utils.decorators import method_decorator
+
+class MyLogin(View):
+    """
+    CBV中 django不建议你直接给类的方法加装饰器
+    无论该装饰器能否正常工作 都不建议增加
+    """
+    # @login_auth  # 不能直接使用装饰器
+    @method_decorator(login_auth)  # 方式1: 指名道姓
+    def get(self, request):
+        return HttpResponse('GET请求')
+    @method_decorator(login_auth)
+    def post(self, request):
+        return HttpResponse('POST请求')
+```
+
+### 加在类视图上
+
+```python
+from django.views import View
+from django.utils.decorators import method_decorator
+
+# 方式2 可以添加多个 针对不同的方法加不同的装饰器
+@method_decorator(login_auth, name='get')  
+@method_decorator(login_auth, name='post')
+class MyLogin(View):
+    """
+    CBV中 django不建议你直接给类的方法加装饰器
+    无论该装饰器能否正常工作 都不建议增加
+    """
+    def get(self, request):
+        return HttpResponse('GET请求')
+
+    def post(self, request):
+        return HttpResponse('POST请求')
+```
+
+### 加在dispath方法上
+
+```python
+from django.views import View
+from django.utils.decorators import method_decorator
+
+class MyLogin(View):
+    """
+    CBV中 django不建议你直接给类的方法加装饰器
+    无论该装饰器能否正常工作 都不建议增加
+    """
+    # 看CBV源码可以得出 CBV里面的所有方法在执行之前都需要先经过dispath方法(该方法你可以看成是一个分发方法)
+    # 方式3: 重写dispath方法 给dispath方法装 会直接作用于当前类里面所有的方法
+    @method_decorator(login_auth)  
+    def dispatch(self, request, *args, **kwargs):
+        return super().dispatch(request, *args, **kwargs)
+
+    def get(self, request):
+        return HttpResponse('GET请求')
+
+    def post(self, request):
+        return HttpResponse('POST请求')
+```
 
 # 模板层
 
@@ -3878,15 +3950,20 @@ def _post_clean(self):
     
 
 **在WEB领域 没有绝对的安全 也没有绝对的不安全**
+  基本上防御措施都需要程序员自己写代码完善 并且只能完善 没法杜绝
 """
 
 # cookie
+概念：服务端设置保存在客户端浏览器上的键值对(只要符合前面定义的都可以叫cookie)
   - 服务端保存在客户端浏览器上的信息都可以称之为cookie
   - 它的表现形式一般都是K:V键值对(可以有多个)
+  - 浏览器可以选择不保存(但是会导致网页无法工作 比如无法登录)
     
 # session
+概念：存储在服务端上的键值对(一般情况都跟用户信息有关 用来标识当前用户)
   - 数据是保存在服务端的 
   - 并且它的表现形式一般也是K:V键值对(可以有多个)
+  - 需要基于cookie才能工作(其实大部分的保存状态的实现都需要基于cookie来做)
 
 # token
   - session虽然是保存在服务端的 但是经不住数据量大
@@ -3916,7 +3993,7 @@ return HttpResponse()
 return render()
 return redirect()
 
-# 如果你想要操作cookie 你就不得不利用obj对象
+# 如果你想要操作cookie 你就不得不利用HttpResponse对象
 obj1 = HttpResponse()
 操作cookie
 return obj1
@@ -3937,11 +4014,14 @@ return obj3
   obj.set_cookie(key, value)
 
 # 在设置cookie的时候 可以添加一个超时时间
-obj.set_cookie('username', 'minho123123', max_age=5, expires=5)
+obj.set_cookie('username', 'minho123123', max_age=5/expires=5)
   - max_age
   - expires
   这两个参数都是设置超时时间的 并且都是以秒为单位
   需要注意的是 针对IE浏览器 需要使用expires
+
+# 设置键值对的时候 可以加盐处理
+obj.set_signed_cokkie(key, value, salt='盐')
 ```
 
 ### 获取cookie
@@ -3950,6 +4030,9 @@ obj.set_cookie('username', 'minho123123', max_age=5, expires=5)
 # obj in [obj1, obj2, obj3]
   request.COOKIES
   request.COOKIES.get(key)
+
+# 获取加盐cookie
+request.get_signed_cookie(key, salt='盐')
 ```
 
 ### 删除cookie
@@ -4082,7 +4165,7 @@ session数据是保存在服务端的(存到哪儿? 数据库 -> session表) 给
   客户端cookie -> sessionid:随机字符串
 
 1. 在默认情况下操作session的时候 需要一张表来存 django默认提供一张django_session表
-   django会默认创建很多张表 django_session就是其中一张
+   django会默认创建很多张表 django_session就是其中一张(No such table:django_session)
    
 2. django默认session的过期时间是14天
    但是你也可以人为的修改它
@@ -4096,8 +4179,8 @@ session数据是保存在服务端的(存到哪儿? 数据库 -> session表) 给
 4. session是保存在服务端的 但是session的保存位置可以有多种选择
    4.1 MySQL
    4.2 文件
-   4.3 redis
-   4.4 memcache
+   4.3 redis/memcache...缓存
+   4.4 其他
    ...
    
 5. session还可以对保存的随机字符串做加盐处理
@@ -4135,10 +4218,10 @@ def set_session(request):
 # session设置过期时间
 request.session.set_expire()
   括号内可以放4种类型的参数
-    1. 整数        多少秒只会失效
-    2. 日期对象     到指定日期之后失效
-    3. 0          一旦当前浏览器窗口关闭立刻失效
-    4. None        失效时间取决于django内部全局session默认的失效时间(14天)  
+    1. 整数                            多少秒只会失效
+    2. 日期对象(datetime/timedelta)     到指定日期之后失效
+    3. 0                               一旦当前浏览器关闭立刻失效
+    4. None                            失效时间取决于django内部全局session默认的失效时间(14天)  
     
 # 测试过期是否是生效
 def set_session(request):
@@ -4195,7 +4278,7 @@ def del_session(request):
     return HttpResponse('Session Delete')
 ```
 
-### django种session配置
+### django中session配置
 
 ```python
 1. 数据库Session
@@ -4269,6 +4352,17 @@ def logout(request):
 def index(request):
     current_user = request.session.get("user", None)
     return render(request, "index.html", {"user": current_user})
+
+
+"""
+总结：
+  django默认给我们提供了一张 django_session表
+  学了session之后 我们发现 我们通过 request.session.get(key) 可以拿到我们存储的数据 而且可以在任意视图直接使用
+
+高阶用法：
+  有时候 如果多个视图函数都需要使用到一些数据的话 你也可以考虑将该数据存储到django_session表中 方便后续的使用
+  e.g: 登录验证码校验
+"""
 ```
 
 
