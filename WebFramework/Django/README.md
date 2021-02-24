@@ -2107,9 +2107,6 @@ __getattribute__  # 特殊 尽量不用
 | setaddr(object, name, value)     | object的属性存在则覆盖 不存在则新增                          |
 | hasattr(object, name)            | 判断对象是否具有这个名字的属性 name必须为**字符串**          |
 
-
-- **settings源码剖析(尝试理解)**
-
 ## CBV如何添加装饰器
 
 ```python
@@ -4363,6 +4360,248 @@ def index(request):
   有时候 如果多个视图函数都需要使用到一些数据的话 你也可以考虑将该数据存储到django_session表中 方便后续的使用
   e.g: 登录验证码校验
 """
+```
+
+
+
+------
+
+
+
+# Django中间件
+
+## 中间件
+
+```python
+django自带七个中间件 每个中间件都有各自对应的功能 并且django还支持程序员自定义中间件
+你在用django开发项目的时候 只要是涉及到 全局 相关的功能 都可以使用中间件方便的完成
+
+e.g:
+    - 全局用户身份校验
+    - 全局用户权限校验
+    - 全局访问频率校验(反爬虫措施之一 -- 破解：IP代理池)
+    - ...(其他涉及全局的功能)
+    
+"""
+django中间件是django的门户(请求来和走 两个方向都要经过)
+  1. 请求来的时候 需要先经过中间件才能到达真正的django后端
+  2. 响应走的时候 也需要经过中间件才能发送出去
+"""
+
+- 仔细理解django请求生命周期流程图
+- 研究django中间件代码规律
+```
+
+### 自带七个中间件
+
+```python
+# 列表里面其实不是字符串 是在导入模块(字符串方式导入模块) 模块路径的字符串形式
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+# 看源码几个中间件的代码组织结构
+"""
+django支持程序员自定义中间件 并且暴露给程序员五个可以自定义的方法
+  1. 第一类 必须掌握
+    - process_request
+    - process_response
+  
+  2. 了解即可
+    - process_view 
+    - process_template_response
+    - process_exception
+"""
+class SessionMiddleware(MiddlewareMixin):
+    def process_request(self, request):
+        csrf_token = self._get_token(request)
+        if csrf_token is not None:
+            # Use same token next time.
+            request.META['CSRF_COOKIE'] = csrf_token
+
+    def process_response(self, request, response):
+        return response
+   
+class CsrfViewMiddleware(MiddlewareMixin):
+    def process_request(self, request):
+        csrf_token = self._get_token(request)
+        if csrf_token is not None:
+            # Use same token next time.
+            request.META['CSRF_COOKIE'] = csrf_token
+
+    def process_view(self, request, callback, callback_args, callback_kwargs):
+        return self._accept(request)
+    
+    def process_response(self, request, response):
+		return response
+
+class AuthenticationMiddleware(MiddlewareMixin):
+    def process_request(self, request):
+        request.user = SimpleLazyObject(lambda: get_user(request))
+```
+
+### 自定义中间件
+
+```python
+"""
+固定步骤：
+  1. 在项目名或者应用名下创建以一个任意名称的文件夹
+  2. 在该文件夹内创建一个任意名称的py文件
+  3. 在该py文件内需要书写类(这个类必须继承MiddlewareMixin)
+     3.1 在这个类里面 就可以自定义这5个方法
+     3.2 这5个方法并不是全部都需要书写 用到几个写几个
+  4. 需要将类的路径以字符串的形式注册到配置文件才能生效
+  
+# 注册中间件
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    '你自己写的中间件路径1',
+    '你自己写的中间件路径2',
+    '你自己写的中间件路径3',
+]
+"""
+```
+
+### 中间件方法详解
+
+```python
+"""
+django支持程序员自定义中间件 并且暴露给程序员五个可以自定义的方法
+  1. 第一类 必须掌握
+     process_request
+     process_response
+  
+  2. 了解即可
+     process_view 
+     process_template_response
+     process_exception
+"""
+```
+
+#### process_request
+
+**使用频率最高 最好用的 重点**
+
+```python
+1. 请求来的时候 需要经过每一个中间件里面的process_request方法 
+   结果的顺序是按照配置文件中注册的中间件顺序 从上往下 依次执行
+    
+2. 如果中间件里面没有定义该方法 那么直接跳过执行下一个中间件
+
+3. 如果该方法返回了HttpResponse对象 那么请求将不再继续往后执行 而是直接原路返回(e.g:校验失败不允许访问 反爬...)
+
+总结：process_request方法 就是用来做全局相关的所有限制功能
+
+"""
+研究：
+  如果在第一个process_request方法 就已经返回了HttpResponse对象 那么响应走的时候 是经过所有的中间件里面的process_response还是有其他情况?
+  
+  结果：其他情况 会直接走同级别(同一个中间件)的process_response 然后依次返回
+  
+  Flask框架也有一个中间件 但是它的规律与django不一样：Flask中间件只要返回数据了就必须经过所有中间件里面的类似于process_response方法
+"""
+```
+
+#### process_response
+
+**重点**
+
+```python
+1. 响应走的时候 需要经过每一个中间件的process_response方法
+   该方法有两个额外的参数 process_response(request, response)
+   response: 默认就是后端视图函数返回给浏览器的内容
+    
+2. 该方法必须返回一个HttpResponse对象
+   2.1 默认返回的就是形参response
+   2.2 你也可以返回自己的内容
+
+3. 顺序是按照配置文件中注册了的中间件 从下往上 依次经过
+   如果你没有定义的话 直接跳过执行下一个
+```
+
+#### process_view
+
+```python
+def process_view(self, request, view_name, *args, **kwargs):
+    print(view_name, args, kwargs)
+    print('自定义中间件里面的process_view')
+        
+路由匹配成功之后 执行视图函数之前 会自动执行中间件里面的process_view方法
+顺序是按照配置文件中注册的中间件顺序 从上往下 依次执行
+```
+
+#### process_template_response
+
+```python
+def index(request):
+    print('我是视图函数index')
+    obj = HttpResponse('index')
+    def render():
+        print('内部的render')
+        return HttpResponse('ojbk')
+    obj.render = render
+    return obj
+
+返回的HttpResponse对象有render属性的时候才会触发
+顺序是按照配置文件中注册了的中间件 从下往上 依次经过
+```
+
+#### process_exception
+
+```python
+当视图函数中出现异常的情况下触发
+顺序是按照配置文件中注册了的中间件 从下往上 依次经过
+```
+
+## 编程思想
+
+```python
+# 基于django中间件的一个重要的编程思想
+```
+
+## csrf跨站请求伪造
+
+```python
+"""
+钓鱼网站(e.g: 大学英语4 6级 登录缴费钓鱼网站)
+  我搭建一个跟正规网站一摸一样的界面(中国银行)
+  用户不小心进入到了我们的网站 用户给某个人转钱
+  打钱的操作确确实实提交给了中国银行的系统 用户的钱也确实减少了 唯一的不同就是目标账户不是用户想要转钱的账户 变成了一个莫名其妙的账户
+  
+内部本质：
+  我们在钓鱼网站的页面 针对目标账号 只给用户提供一个没有name属性的普通input框
+  然后我们在内部隐藏一个已经写好name和value的input框
+  
+=========
+如何规避上述问题 -- csrf跨站请求伪造
+  网站在给用户返回一个具有提交数据功能页面的时候 会给这个页面加一个唯一标识(不同的页面不一样 永远不重复)
+  当这个页面朝后端发送post请求的时候 我的后端会先校验这个唯一标识 如果这个唯一标识不对 直接拒绝(403 forbidden) 如果成功则正常执行
+"""
+
+```
+
+## Auth模块
+
+```python
+
+```
+
+## settings源码剖析
+
+```python
+
 ```
 
 
