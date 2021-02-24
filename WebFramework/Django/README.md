@@ -3594,7 +3594,7 @@ def index(request):
         """
         1. 数据获取繁琐
         2. 校验数据需要构造成字典的格式传入才行
-        注意：request。POST可以看成就是一个字典
+        注意：request.POST可以看成就是一个字典
         """
         # 3. 校验数据
         form_obj = MyForm(request.POST)
@@ -3942,13 +3942,6 @@ obj.set_cookie('username', 'minho123123', max_age=5, expires=5)
   - expires
   这两个参数都是设置超时时间的 并且都是以秒为单位
   需要注意的是 针对IE浏览器 需要使用expires
-
-# 如何主动删除cookie - 退出登录|注销
-@login_auth
-def logout(request):
-    obj = redirect('/app03/login/')
-    obj.delete_cookie('username')  # 删除cookie 实现退出登录注销功能
-    return obj
 ```
 
 ### 获取cookie
@@ -3959,7 +3952,18 @@ def logout(request):
   request.COOKIES.get(key)
 ```
 
-### 登录功能示例
+### 删除cookie
+
+```python
+# 如何主动删除cookie - 退出登录|注销
+@login_auth
+def logout(request):
+    obj = redirect('/app03/login/')
+    obj.delete_cookie('username')  # 删除cookie 实现退出登录注销功能
+    return obj
+```
+
+### cookie版登录验证
 
 ```python
 from django.shortcuts import render, HttpResponse, redirect, reverse
@@ -3993,7 +3997,7 @@ def home(request):
 
 ```python
 """
-问题1：如果需要验证登陆的视图有非常多 这些写很冗余 -> 装饰器
+问题1：如果需要验证登陆的视图有非常多 这样写很冗余 -> 装饰器
 解决：校验用户是否登陆的简单装饰器
 """
 def login_auth(wrapped):
@@ -4018,10 +4022,11 @@ def login_auth(wrapped):
   
 解决：见下面稍微完整的登陆示例代码
 """
-
+from functools import wraps
 from django.shortcuts import render, HttpResponse, redirect, reverse
 
 def login_auth(wrapped):
+    @wraps(wrapped)
     def wrapper(request, *args, **kwargs):
         # print(request.path)
         # print(request.get_full_path())  # 能够获取到用户上一次想要访问的url
@@ -4067,12 +4072,203 @@ def users(request):
     return HttpResponse('Users Page, Need Login')
 ```
 
-
-
 ## Session操作
 
-```python
+[如何使用会话](https://docs.djangoproject.com/zh-hans/3.1/topics/http/sessions/)
 
+```python
+"""
+session数据是保存在服务端的(存到哪儿? 数据库 -> session表) 给客户端返回的是一个随机字符串
+  客户端cookie -> sessionid:随机字符串
+
+1. 在默认情况下操作session的时候 需要一张表来存 django默认提供一张django_session表
+   django会默认创建很多张表 django_session就是其中一张
+   
+2. django默认session的过期时间是14天
+   但是你也可以人为的修改它
+   
+3. django_session表中的数据是取决于浏览器的
+   同一个计算机上(IP地址) 同一个浏览器 只会有一条数据生效(当session过期的时候 可能会出现多条数据对应一个浏览器 但是这个数据没意义- 无效数据;但是该现象不会持续很久 内部会自动识别过期的数据清除 你也可以通过代码请除) 
+   目的 -> 主要为了节省服务端资源
+   
+   通过一个唯一的cookieID 服务端就知道来的用户是谁 然后服务端根据不同的cookieID 在服务端上保存一段时间的私密资料(如账号密码等) 这就是服务端session保存
+   
+4. session是保存在服务端的 但是session的保存位置可以有多种选择
+   4.1 MySQL
+   4.2 文件
+   4.3 redis
+   4.4 memcache
+   ...
+   
+5. session还可以对保存的随机字符串做加盐处理
+
+设置session
+  - session可以设置多个 但是参考上面第3点
+  - session也可以设置过期时间
+  request.session['key'] = value    # 把request.session当作一个字典
+   
+获取session
+  request.session.get('key')
+  
+清除session
+  request.session.delete()    # 只删服务端当前session
+  request.session.flush()     # 浏览器和服务端都清空(推荐使用)
+"""
+```
+
+### 设置session
+
+```python
+# views.py
+def set_session(request):
+    """
+    设置session内部发生了哪些事：
+      1. django内部会自动帮你生成一个随机字符串
+      2. django内部自动将随机字符串和对应的数据存储到django_session表中 这一步不是直接生效的 分为下面两步
+        2.1 先在内存中产生操作数据的缓存
+        2.2 在响应结果经过django中间件的时候 才真正操作数据库
+      3. 将产生的随机字符串返回给客户端浏览器保存(设置cookie) 
+    """
+    request.session['hobby'] = 'girl'
+    return HttpResponse('Session Set')
+
+# session设置过期时间
+request.session.set_expire()
+  括号内可以放4种类型的参数
+    1. 整数        多少秒只会失效
+    2. 日期对象     到指定日期之后失效
+    3. 0          一旦当前浏览器窗口关闭立刻失效
+    4. None        失效时间取决于django内部全局session默认的失效时间(14天)  
+    
+# 测试过期是否是生效
+def set_session(request):
+    request.session['hobby'] = 'girl'
+    request.session['hobby1'] = 'girl1'
+    request.session['hobby2'] = 'girl2'
+    request.session.set_expiry(0)
+    return HttpResponse('Session Set')
+
+def get_session(r):
+    # print(request.session.get('hobby'))
+    if r.session.get('hobby'):
+        print(r.session)  # 封装为一个对象 <django.contrib.sessions.backends.db.SessionStore object at 0x...>
+        print(r.session.get('hobby1'))
+        print(r.session.get('hobby2'))
+        return HttpResponse('Session Get')
+    return HttpResponse('No Session')  # 浏览器关闭后 重新打开则失效
+```
+
+- **django_session Table数据**
+
+| session_key                      | session_data                                                 | expire_date         |
+| -------------------------------- | ------------------------------------------------------------ | ------------------- |
+| 0mzz5pprookey7rjd4m3pl6onoa5jdtm | NjRhZjljYzM1NDNkNzhkNmVkOWVkM2QzZGY2MGE1OWNhYzQwODBmNTp7ImhvYmJ5IjoiZ2lybCJ9 | 2021-03-10 01:59:31 |
+
+- **客户端cookie**
+
+| Name      | Value                            |
+| --------- | -------------------------------- |
+| sessionid | 0mzz5pprookey7rjd4m3pl6onoa5jdtm |
+
+### 获取session
+
+```python
+def get_session(request):
+    """
+    获取session内部发生了那些事：
+      1. 自动从浏览器请求中获取sessionid对应的随机字符串
+      2. 拿着该随机字符串去django_session中查找对应的数据
+      3. 比对数据
+        3.1 如果比对上 则将对应得数据取出并以字典得形式封装到request.session中
+        3.2 如果比对不上 则request.session.get()返回的是None - dict.get()方法获取不到key 默认返回None
+    """
+    print(request.session.get('hobby'))
+    return HttpResponse('Session Get')
+```
+
+### 清除session
+
+```python
+def del_session(request):
+    request.session.delete()    # 只删除服务端的有效session
+    request.session.flush()     # 服务端和浏览器都删(推荐使用)
+    return HttpResponse('Session Delete')
+```
+
+### django种session配置
+
+```python
+1. 数据库Session
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'   # 引擎（默认）
+
+2. 缓存Session
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'  # 引擎
+SESSION_CACHE_ALIAS = 'default'                            # 使用的缓存别名（默认内存缓存，也可以是memcache），此处别名依赖缓存的设置
+
+3. 文件Session
+SESSION_ENGINE = 'django.contrib.sessions.backends.file'    # 引擎
+SESSION_FILE_PATH = None                                    # 缓存文件路径，如果为None，则使用tempfile模块获取一个临时地址tempfile.gettempdir() 
+
+4. 缓存+数据库
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'        # 引擎
+
+5. 加密Cookie Session
+SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'   # 引擎
+
+其他公用设置项：
+SESSION_COOKIE_NAME ＝ "sessionid"                       # Session的cookie保存在浏览器上时的key，即：sessionid＝随机字符串（默认）
+SESSION_COOKIE_PATH ＝ "/"                               # Session的cookie保存的路径（默认）
+SESSION_COOKIE_DOMAIN = None                             # Session的cookie保存的域名（默认）
+SESSION_COOKIE_SECURE = False                            # 是否Https传输cookie（默认）
+SESSION_COOKIE_HTTPONLY = True                           # 是否Session的cookie只支持http传输（默认）
+SESSION_COOKIE_AGE = 1209600                             # Session的cookie失效日期（2周）（默认）
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False                  # 是否关闭浏览器使得Session过期（默认）
+SESSION_SAVE_EVERY_REQUEST = False                       # 是否每次请求都保存Session，默认修改之后才保存（默认）
+```
+
+### session版登录验证
+
+```python
+from functools import wraps
+
+def check_login(func):
+    @wraps(func)
+    def inner(request, *args, **kwargs):
+        next_url = request.get_full_path()
+        if request.session.get("user"):
+            return func(request, *args, **kwargs)
+        else:
+            return redirect("/login/?next={}".format(next_url))
+    return inner
+
+def login(request):
+    if request.method == "POST":
+        user = request.POST.get("user")
+        pwd = request.POST.get("pwd")
+
+        if user == "alex" and pwd == "alex1234":
+            # 设置session
+            request.session["user"] = user
+            # 获取跳到登陆页面之前的URL
+            next_url = request.GET.get("next")
+            # 如果有，就跳转回登陆之前的URL
+            if next_url:
+                return redirect(next_url)
+            # 否则默认跳转到index页面
+            else:
+                return redirect("/index/")
+    return render(request, "login.html")
+
+@check_login
+def logout(request):
+    # 删除所有当前请求相关的session
+    request.session.delete()
+    return redirect("/login/")
+
+@check_login
+def index(request):
+    current_user = request.session.get("user", None)
+    return render(request, "index.html", {"user": current_user})
 ```
 
 
