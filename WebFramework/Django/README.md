@@ -1,6 +1,14 @@
 ---
 title: Django
 date: 2021-02-10 22:00:00
+categories: 
+- PYTHON
+tags:
+- Python
+- Django
+- Web
+- ORM
+cover: /img/django.jpg
 ---
 
 # Django
