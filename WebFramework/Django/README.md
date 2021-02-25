@@ -4590,15 +4590,136 @@ def index(request):
   
 内部本质：
   我们在钓鱼网站的页面 针对目标账号 只给用户提供一个没有name属性的普通input框
-  然后我们在内部隐藏一个已经写好name和value的input框
+  然后我们在内部隐藏一个已经写好name和value的input框 提交的时候 action url写正常网站的url
   
 =========
 如何规避上述问题 -- csrf跨站请求伪造
   网站在给用户返回一个具有提交数据功能页面的时候 会给这个页面加一个唯一标识(不同的页面不一样 永远不重复)
   当这个页面朝后端发送post请求的时候 我的后端会先校验这个唯一标识 如果这个唯一标识不对 直接拒绝(403 forbidden) 如果成功则正常执行
 """
-
 ```
+
+### Form表单如何校验
+
+```html
+<form action="" method="post">
+  {% csrf_token %}
+    ...
+</form>
+```
+
+### Ajax如何校验
+
+- **方式一**
+
+```javascript
+$.ajax({
+  url: "/cookie_ajax/",
+  type: "POST",
+  data: {
+    "username": "Tonny",
+    "password": 123456,
+    "csrfmiddlewaretoken": $("[name = 'csrfmiddlewaretoken']").val()  // 使用JQuery取出csrfmiddlewaretoken的值 拼接到data中
+    // "csrfmiddlewaretoken": {{ csrf_token }}  // 或者利用模板语法提供的快捷书写
+  },
+  success: function (data) {
+    console.log(data);
+  }
+})
+```
+
+- **方式二**
+
+```javascript
+$.ajax({
+  url: "/cookie_ajax/",
+  type: "POST",
+  headers: {"X-CSRFToken": $.cookie('csrftoken')},  // 从Cookie取csrf_token 并设置ajax请求头
+  data: {"username": "Q1mi", "password": 123456},
+  success: function (data) {
+    console.log(data);
+  }
+})
+```
+
+- **方式三**
+
+```javascript
+// 将这段代码配置到你的Django项目的静态文件中 直接导入该文件即可自动帮我们解决ajax提交post数据时校验csrf_token的问题(依赖jQuery)
+
+function getCookie(name) {
+    var cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        var cookies = document.cookie.split(';');
+        for (var i = 0; i < cookies.length; i++) {
+            var cookie = jQuery.trim(cookies[i]);
+            // Does this cookie string begin with the name we want?
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+var csrftoken = getCookie('csrftoken');
+
+function csrfSafeMethod(method) {
+  // these HTTP methods do not require CSRF protection
+  return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+}
+
+$.ajaxSetup({
+  beforeSend: function (xhr, settings) {
+    if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
+      xhr.setRequestHeader("X-CSRFToken", csrftoken);
+    }
+  }
+});
+```
+
+[django跨站请求伪造保护官方文档](https://docs.djangoproject.com/zh-hans/3.1/ref/csrf/)
+
+### csrf相关装饰器
+
+[装饰器方法](https://docs.djangoproject.com/zh-hans/3.1/ref/csrf/#module-django.views.decorators.csrf)
+
+[装饰类](https://docs.djangoproject.com/zh-hans/3.1/topics/class-based-views/intro/#id1)
+
+```python
+"""
+1. 网站整体都不校验csrf 就单单几个视图函数需要校验
+2. 网站整体都校验csrf 就单单几个视图函数不需要校验
+
+  csrf_exempt  - 忽视校验
+  csrf_protect - 需要校验 
+"""
+
+# 解决:Django提供的装饰器
+
+from django.views.decorators.csrf import csrf_exempt, csrf_protect
+
+# FBV直接加对应装饰器即可
+# @csrf_exempt
+@csrf_protect
+def index(request):
+    pass
+
+# CBV
+csrf_protect - 全局忽视 局部需要校验 -> 使用CBV装饰器的三种方法都可以
+csrf_exempt  - 全局校验 局部忽视校验 -> 只可以加给dispath方法 才有效
+
+@method_decorator(csrf_exempt, name='dispath')
+class MyIndex(View):
+    # @method_decorator(csrf_exempt)
+    def dispath(self, request, *args, **kwargs):
+        return super().dispath(request, *args, **kwargs)
+    
+    def post(self, request):
+        return HttpResponse('POST')
+```
+
+
 
 ## Auth模块
 
