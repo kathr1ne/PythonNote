@@ -5058,7 +5058,8 @@ class UserInfo(AbstractUser):
     
 """
 你如果自己写表替代了auth_user
-那么 auth模块的功能还是照常使用 参考的表也由原来的auth_user变成了UserInfo
+那么 auth模块的功能还是照常使用 参考
+的表也由原来的auth_user变成了UserInfo
 """
 ```
 
@@ -5173,4 +5174,3 @@ on_delete=models.SET_DEFAULT, # 删除关联数据,与之关联的值设置为�
 on_delete=models.SET(),       # 删除之后执行一个函数
 on_delete=RESTRICT,           # New in Django 3.1.
 ```
-
