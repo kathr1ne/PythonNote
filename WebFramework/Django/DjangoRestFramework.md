@@ -178,13 +178,237 @@ Github的API就是这种设计 访问api.github.com会得到一个所有可用AP
 }
 ```
 
-11. **其他**
+**其他**
 
 ```python
 1. API的身份认证应该使用OAuth 2.0框架
 
 2. 服务器返回的数据格式 应该尽量使用JSON 避免使用XML
 ```
+
+## DRF初识
+### 安装
+
+```python
+pip install djangorestframework==3.12.2
+```
+
+### 简单使用
+
+```python
+1. 在settings.py注册app
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'rest_framework',
+]
+
+2. 在models.py中写表模型
+from django.db import models
+
+class Book(models.Model):
+    nid = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=32)
+    price = models.DecimalField(max_digits=5, decimal_places=2)
+    author = models.CharField(max_length=32)
+    
+3. 新建一个序列化类
+from rest_framework.serializers import ModelSerializer
+from .models import Book
+
+class BookModelSerializer(ModelSerializer):
+    class Meta:
+        model = Book
+        fields = "__all__"
+        
+4. 在视图中写视图类(CBV)
+from rest_framework.viewsets import ModelViewSet
+from .models import Book
+from .serializer import BookModelSerializer
+
+class BooksViewSet(ModelViewSet):
+    queryset = Book.objects.all()
+    serializer_class = BookModelSerializer
+    
+5. 写路由关系
+from django.contrib import admin
+from django.urls import path
+from .book import views
+from rest_framework.routers import DefaultRouter
+
+router = DefaultRouter()
+router.register('books', views.BooksViewSet)
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+]
+
+urlpatterns += router.urls
+
+"""
+DERF通过上面几步很少的代码 就已经实现了/books/的5个接口：
+127.0.0.1:8000/books/    GET    获取所有书籍
+127.0.0.1:8000/books/    POST   新增书籍
+127.0.0.1:8000/books/2/  GET    获取主键为2的书籍详情
+127.0.0.1:8000/books/2/  DELETE 删除主键为2的书籍
+127.0.0.1:8000/books/2/  PUT    修改主键为2的书籍详情
+"""
+```
+
+### CBV源码
+
+```python
+# ModelViewSet继承自View(django远程的View)
+# ModelViewSet -> APIView -> View
+```
+
+#### View源码解读
+
+```python
+# CBV简单实现
+
+# urls.py
+urlpatterns = [
+    path('books/', views.Books.as_view()),
+]
+
+# views.py
+from django.views import View
+from django.http import JsonResponse
+
+class Books(View):
+    def get(self, request):
+        return JsonResponse({'c++': 123.00})
+    
+127.0.0.1:8000/books/  GET  实现GET请求方法
+    
+================================
+源码解读：切入口：as_view()
+"""
+本质还是FBV: 
+    views.Books.as_view() ->  as_view()返回一个函数对象 -> views.Books.view
+    
+如果请求过来 路径匹配上 会执行 views.Books.view的 view内存地址指向的函数对象 并把request参数传入(当次请求的request对象) -> view(request) 
+"""
+
+# as_view()本质
+@classonlymethod
+def as_view(cls, **initkwargs):
+    def view(request, *args, **kwargs):
+        self = cls(**initkwargs)
+        # cls是我们自己写的类 调用的时候自动注入(谁调用 注入谁)
+        # self = LoginView(**initkwargs) 产生一个我们自己写的类的实例
+        if hasattr(self, 'get') and not hasattr(self, 'head'):
+            self.head = self.get
+        self.request = request
+        self.args = args
+        self.kwargs = kwargs
+        return self.dispatch(request, *args, **kwargs)
+        """
+        以后 经常会需要看源码 但是在看Python源码的时候 一定要时刻提醒自己 面向对象属性方法查找顺序 mro
+        总结：看源码 只要看到了self.xxx 一定要问自己 当前这个self到底是谁
+        """
+    return view
+
+# CBV的精髓 dispath
+def dispatch(self, request, *args, **kwargs):
+    # Try to dispatch to the right method; if a method doesn't exist,
+    # defer to the error handler. Also defer to the error handler if the
+    # request method isn't on the approved list.
+    # 获取当前请求的小写格式 然后比对当前请求方式是否合法
+    # get请求为例
+    if request.method.lower() in self.http_method_names:
+       """
+       反射：通过字符串来操作对象的属性或方法 运行时获取类型定义信息
+       handler = getattr(自己写的类产生的对象, 'get', 当找不到get属性或者方法的时候就会用第三个参数)
+       handler = 我们自己写的类里面的get方法
+       """
+        handler = getattr(self, request.method.lower(), self.http_method_not_allowed)
+    else:
+        handler = self.http_method_not_allowed
+    # 自动调用get方法
+    return handler(request, *args, **kwargs)
+
+```
+
+#### APIView源码解读
+
+```python
+# urls.py
+# 也是as_view() 只不过被APIView(继承View)重写
+path('books_apiview/', views.BooksAPIView.as_view())
+
+# views.py
+from rest_framework.views import APIView
+
+class BooksAPIView(APIView):
+    def get(self, request):
+        return JsonResponse({'APIView': 666})
+====================
+源码解读：切入口还是 as_view()  # APIView的as_view()
+@classmethod  # 类的绑定方法
+def as_view(cls, **initkwargs):
+    view = super().as_view(**initkwargs)  # 调用父类的as_view方法
+    view.cls = cls
+    view.initkwargs = initkwargs
+    # 继承APIView的视图类会禁用csrf认证(drf会有自己的认证)
+    # 添加装饰器的另一种方法 @方式是语法糖 本质就是传入一个被装饰函数给装饰器函数当作实参
+    return csrf_exempt(view)
+
+=> URL视图还可以这么写 path('test/', csrf_exempt(as_view))
+
+# 请求来 -> 路由匹配 -> view(request) -> 
+
+# APIView的disapth
+def dispatch(self, request, *args, **kwargs):
+    """
+    `.dispatch()` is pretty much the same as Django's regular dispatch,
+    but with extra hooks for startup, finalize, and exception handling.
+    """
+    self.args = args
+    self.kwargs = kwargs
+    request = self.initialize_request(request, *args, **kwargs)
+    self.request = request
+    self.headers = self.default_response_headers  # deprecate?
+
+    try:
+        self.initial(request, *args, **kwargs)
+
+        # Get the appropriate handler method
+        if request.method.lower() in self.http_method_names:
+            handler = getattr(self, request.method.lower(),
+                              self.http_method_not_allowed)
+        else:
+            handler = self.http_method_not_allowed
+
+        response = handler(request, *args, **kwargs)
+
+    except Exception as exc:
+        response = self.handle_exception(exc)
+
+    self.response = self.finalize_response(request, response, *args, **kwargs)
+    return self.response
+```
+
+**补充**
+
+```python 
+def add(x, y):
+    return x + y
+
+add.xyz = 'xyz111'  # 由于Python中一切皆对象 所以都可以设置属性 取出属性
+
+print(add(5, 5))
+print(add.xyz)
+```
+
+
+
+
 
 ## 序列化
 
