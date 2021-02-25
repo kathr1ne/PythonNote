@@ -4488,13 +4488,13 @@ MIDDLEWARE = [
 """
 django支持程序员自定义中间件 并且暴露给程序员五个可以自定义的方法
   1. 第一类 必须掌握
-     process_request
-     process_response
+     process_request(self, request)
+     process_response(self, request, response)
   
   2. 了解即可
-     process_view 
-     process_template_response
-     process_exception
+     process_view(self, view_name, *args, **kwargs)
+     process_template_response(self, request, response)
+     process_exception(self, request, exception)
 """
 ```
 
@@ -4518,7 +4518,7 @@ django支持程序员自定义中间件 并且暴露给程序员五个可以自�
   
   结果：其他情况 会直接走同级别(同一个中间件)的process_response 然后依次返回
   
-  Flask框架也有一个中间件 但是它的规律与django不一样：Flask中间件只要返回数据了就必须经过所有中间件里面的类似于process_response方法
+  Flask框架也有类似的中间件 但是它的规律与django不一样：Flask中间件只要返回数据了就必须经过所有中间件里面的类似于process_response方法
 """
 ```
 
@@ -4620,6 +4620,12 @@ print(ret)
 
 ### importlib进阶使用##
 
+1. **配置文件注册功能**
+2. **importlib模块**
+3. **字符串切割rsplit maxsplit参数**
+4. **反射 getattr()...**
+5. **面向对象鸭子类型**
+
 ```python
 # notify.py 里面封装的三个通知函数
 def wechat(content):
@@ -4715,7 +4721,7 @@ notify.send_all('通知')
 =========
 如何规避上述问题 -- csrf跨站请求伪造
   网站在给用户返回一个具有提交数据功能页面的时候 会给这个页面加一个唯一标识(不同的页面不一样 永远不重复)
-  当这个页面朝后端发送post请求的时候 我的后端会先校验这个唯一标识 如果这个唯一标识不对 直接拒绝(403 forbidden) 如果成功则正常执行
+  当这个页面朝后端发送post请求的时候 我的后端会先校验这个唯一标识 如果这个唯一标识不对 直接拒绝(403 forbidden) 如果成功则正常执行(csrf中间件帮我们搞定)
 """
 ```
 
@@ -4724,8 +4730,12 @@ notify.send_all('通知')
 ```html
 <form action="" method="post">
   {% csrf_token %}
-    ...
+  <input type="hidden" name="csrfmiddlewaretoken" value="唯一的随机字符串">
+  ...
 </form>
+
+<!-- hidden属性 隐藏 -->
+<input type="hidden" name="csrfmiddlewaretoken" value="JCVNo1kxO4Z1WSUSmFkLBTFsO6XIYAl3Gr9VUfSQoWo6gBJn4jJxhn8V6YCWJxdQ">
 ```
 
 ### Ajax如何校验
@@ -4740,7 +4750,7 @@ $.ajax({
     "username": "Tonny",
     "password": 123456,
     "csrfmiddlewaretoken": $("[name = 'csrfmiddlewaretoken']").val()  // 使用JQuery取出csrfmiddlewaretoken的值 拼接到data中
-    // "csrfmiddlewaretoken": {{ csrf_token }}  // 或者利用模板语法提供的快捷书写
+    // "csrfmiddlewaretoken": '{{ csrf_token }}'  // 或者利用模板语法提供的快捷书写
   },
   success: function (data) {
     console.log(data);
@@ -4762,7 +4772,7 @@ $.ajax({
 })
 ```
 
-- **方式三**
+- **方式三(通用)**
 
 ```javascript
 // 将这段代码配置到你的Django项目的静态文件中 直接导入该文件即可自动帮我们解决ajax提交post数据时校验csrf_token的问题(依赖jQuery)
@@ -4839,21 +4849,218 @@ class MyIndex(View):
         return HttpResponse('POST')
 ```
 
-
-
-## Auth模块
+# Auth模块
 
 ```python
+# 只要是跟用户相关的登录、注册、检验、修改密码、注销、验证用户是否登录 都能用该模块实现
+"""
+其实我们在创建好一个django项目之后 直接执行数据库迁移命令 会自动生成很多表
+  django_session
+  auth_user  # 用户表
+  
+django在启动之后 就可以直接访问admin路由 需要输入用户名和密码 数据参考的就是auh_user表 并且还必须是管理员才能进入
 
+创建超级用户(管理员)
+   eatesuperuser
+   
+依赖于auth_user表完成用户相关的所有功能
+
+使用auth模块 要用就用全套 封装的很好
+"""
 ```
-
-## settings源码剖析
+## 常用方法总结
 
 ```python
+1. 比对用户名和密码是否正确
+# 括号内必须同时传入用户名和密码
+user_obj = auth.authenticate(request, username=username, password=password)
+print(user_obj)  # 用户对象 数据不符合返回None
+print(user_obj.username)  # minho
+print(user_obj.password)  # 密文
 
+2. 保存用户状态
+auth.login(request,user_obj)
+# 类似于reqeust.session[key] = user_obj
+# 只要执行了该方法 你就可以在任何地方通过request.user就能获取到当前登录的用户对象
+# 它自动去django_session里面查找对应的用户对象 给你封装到request.user中
+
+3. 判断当前用户是否登录
+request.user.is_authenticated()
+
+4. 获取当前登录用户
+# 获取用户对象 未登录：AnonymousUser
+request.user
+
+5. 校验用户是否登录 - 装饰器
+from django.contrib.auth.decorators import login_required
+# 两种使用方式
+# 局部配置
+@login_required(login_url='/login/')
+# 全局配置
+LOGIN_URL = '/login/'  # settings.py
+
+6. 比对原密码
+request.user.check_password(old_password)  # 自动加密对比密码
+
+7. 修改密码
+request.user.set_password(new_password)  # 这步不会影响数据库 仅仅是在修改对象的属性
+request.user.save()  # 真正的操作数据库
+
+8. 注销
+auth.logout(request)  # request.session表找到登录的对象 类似：request.session.flush
+
+9. 注册
+User.objects.create(username=username, password=password)  # 写入数据 不能使用create 密码没有加密处理 后面使用密码比对 request.user.check_password 会出错
+
+# 创建普通用户
+User.objects.create_user(username=username, password=password)
+
+# 创建超级用户(了解): 使用代码创建查超级用户 邮箱必填 命令行创建可以不填
+User.objects.create_superuser(username=username, password=password, email='1234567@qq.com')
 ```
 
+## 完整代码示例
 
+
+```python
+from django.shortcuts import render, HttpResponse, redirect
+from django.contrib import auth
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
+
+from hmac import compare_digest
+
+"""
+使用auth模块 要用就用全套 否则会出一些奇怪的错误
+"""
+def login(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        # 去用户表中校验数据
+        # 1. 表如何获取
+        # 2. 密码如何比对
+        user_obj = auth.authenticate(request, username=username, password=password)
+        print(user_obj)  # 用户对象 数据不符合返回None
+        # print(user_obj.username)
+        # print(user_obj.password)
+        if user_obj:
+            # 保存用户状态
+            auth.login(request,user_obj)
+            # 类似于reqeust.session[key] = user_obj
+            # 只要执行了该方法 你就可以在任何地方通过request.user就能获取到当前登录的用户对象
+            # 它自动去django_session里面查找对应的用户对象 给你封装到request.user中
+        """
+        authenticate
+        1. 自动查找auth_user标签
+        2. 自动给密码加密再比对
+        该方法注意事项：括号内必须同时传入用户名和密码 不能只传用户名(一步直接筛出用户对象 否则还需要通过用户名再去查找密码 再比对)
+        """
+    return render(request, 'login.html')
+
+
+# @login_required(login_url='/app03/login/')  # 局部配置: 用户没有登录跳转到login_user后面指定的网址
+@login_required
+def home(request):
+    """用户登录之后才能看home"""
+    # 获取用户对象 未登录：AnonymousUser
+    print(request.user)
+    # 判断用户是否登录
+    print(request.user.is_authenticated())
+    return HttpResponse('OK')
+
+
+"""
+如果局部和全局都有 局部优先
+
+局部和全局哪个好?
+  全局的好处在于 无需重复写代码 但是跳转的页面却很单一
+  局部的好处在于 不同的视图函数在用户没有登录的情况下可以跳转到不同的页面
+"""
+
+# @login_required(login_url='/app03/login/')
+@login_required
+def index(request):
+    return HttpResponse('index')
+
+
+@login_required
+def set_password(request):
+    if request.method == 'POST':
+        old_password = request.POST.get('old_password')
+        new_password = request.POST.get('new_password')
+        confirm_password = request.POST.get('confirm_password')
+        # 先检验2次密码是否一致
+        if new_password == confirm_password:
+            # 校验老密码是否对不对
+            is_right = request.user.check_password(old_password)  # 自动加密对比密码
+            if is_right:
+                # 修改密码
+                request.user.set_password(new_password)  # 直到这步不会影响数据库 仅仅是在修改对象的属性
+                request.user.save()  # 真正的操作数据库
+        return redirect('/app03/login/')
+
+    return render(request, 'set_password.html', locals())
+
+
+@login_required
+def logout(request):
+    auth.logout(request)  # request.session表找到登录的对象 类似：request.session.flush
+    return redirect('/app03/login/')
+
+
+def register(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        confirm_password = request.POST.get('confirm_password')
+        # 操作auth_user表 写入数据
+        if compare_digest(password, confirm_password):
+            # User.objects.create(username=username, password=password)  # 写入数据 不能使用create 密码没有加密处理
+            # 创建普通用户
+            User.objects.create_user(username=username, password=password)
+            # 创建超级用户(了解): 使用代码创建查超级用户 邮箱必填 命令行创建可以不填
+            # User.objects.create_superuser(username=username, password=password, email='1234567@qq.com')
+    return render(request, 'register.html')
+```
+
+## 如何扩展auth_user表
+
+```python
+from django.db import models
+from django.contrib.auth.models import User, AbstractUser
+
+# 扩展auth_user表的两种方式
+# 第一种：一对一关系 不推荐
+class UserDetail(models.Model):
+    phone = models.BigIntegerField()
+    user = models.OneToOneField(to='User')
+
+
+# 第二种：利用面向对象的继承
+class UserInfo(AbstractUser):
+    """
+    如果继承了AbstractUser
+    那么在执行数据库迁移命令的时候 auth_user表就不会再创建出来了
+    而UserInfo表中会出现 auth_user所有的字段外加自己扩展的字段
+    这么做的好处：在于你能够直接点击你自己的表更加快速的完成操作及扩展
+
+    前提：
+       1.在继承之前没有执行过数据库迁移命令
+          auth_user没有被创建出来 - 在数据库设计阶段就要明确需不需要扩展该字段
+          如果当前库已经创建了 那么你就重新换一个库
+       2.继承的类里面 不要覆盖AbstractUser里面的字段名
+          表里面有的字段不能动 只能额外扩展字段
+       3.需要在配置文件中告诉django 你要用UserInfo替换auth_user ***
+          AUTH_USER_MODEL = 'app03.UserInfo'  # 应用名.表名 不要加models
+    """
+    phone = models.BigIntegerField()
+    
+"""
+你如果自己写表替代了auth_user
+那么 auth模块的功能还是照常使用 参考的表也由原来的auth_user变成了UserInfo
+"""
+```
 
 ------
 
