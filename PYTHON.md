@@ -162,6 +162,80 @@ r'\n\tabcd'
 
 ```
 
+## 模块
+
+### hashlib
+
+```python
+"""
+1. 什么是hash
+   hash是一类算法 该算法接受传入的内容 经过一系列运算得到一串hash值
+   hash值的特点：
+     1.1 只要传入的内容一样 得到的hash值必然一样
+     1.2 不能跟据hash值反解出传入内容(没有绝对的安全 撞库...)
+     1.3 只要使用的hash算法不变 无论传入的内容多大 得到的hash值长度固定
+
+
+2. hash的用途
+   1.2 用于密码密文传输与验证
+   1.1 1.3 用于文件完整性校验
+
+hash算法：
+  MD5
+  sha512
+  sha256
+"""
+```
+
+### 使用
+
+#### 文件完整性
+
+```python
+import hashlib
+
+# 得到hash工厂
+m = hashlib.md5()
+# m = hashlib.sha256()
+
+# update() 传入bytes -> 不断给这个hash工厂运送原材料
+"""
+多次update的值合到一起 
+  好处：内容比较大的情况下 比如校验文件(一行一行读 节约内存)
+  缺点：文件内容过大 时间慢 如何解决? -> 解决：取一部分进行校验 不用全部读完
+       f = open('file', mode='rb')
+       f.seek() 选取几个点取内容 update进去
+"""
+m.update('hello'.encode('utf-8'))
+m.update('world'.encode('utf-8'))
+
+# 获取上面原材料合到一起得到的值
+res = m.hexdigest()  # 'helloworld'
+print(res)
+```
+
+#### 密码加盐
+
+```python
+import hashlib
+
+# 密码前后加盐
+m = hashlib.md5()
+m.update('天王'.encode('utf-8'))
+m.update(b'alex3714')
+m.update('盖地虎'.encode('utf-8'))
+print(m.hexdigest())
+# 'ali天王ex37盖地虎14'  # 可以对密码截取 分开加盐
+
+"""
+加盐之后 撞库：
+  1. 需要知道加的盐内容是什么
+  2. 还需要知道你的盐加在了什么位置
+"""
+```
+
+
+
 ## 面向对象进阶
 
 [魔术方法参考](https://pyzh.readthedocs.io/en/latest/python-magic-methods-guide.html)
