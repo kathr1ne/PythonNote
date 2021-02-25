@@ -2111,8 +2111,8 @@ __getattribute__  # 特殊 尽量不用
 
 | 内建函数                         | 意义                                                         |
 | -------------------------------- | ------------------------------------------------------------ |
-| getaddr(object, name[, default]) | 通过name返回object的属性值 当属性不存在 将使用default返回 如果没有default 则抛出AttributeError name必须为**字符串** |
-| setaddr(object, name, value)     | object的属性存在则覆盖 不存在则新增                          |
+| getattr(object, name[, default]) | 通过name返回object的属性值 当属性不存在 将使用default返回 如果没有default 则抛出AttributeError name必须为**字符串** |
+| setattr(object, name, value)     | object的属性存在则覆盖 不存在则新增                          |
 | hasattr(object, name)            | 判断对象是否具有这个名字的属性 name必须为**字符串**          |
 
 ## CBV如何添加装饰器
@@ -4577,6 +4577,126 @@ def index(request):
 
 ```python
 # 基于django中间件的一个重要的编程思想
+```
+
+### importlib简单介绍
+
+```python
+# 有以下目录结构
+Projects/
+  - myfile/
+    - b.py
+  - a.py
+
+# b.py
+name = 'bbbbbb'
+
+"""
+问题：如何在a.py中使用b.py里面的变量?
+"""
+```
+
+- **模块导入**
+
+```python
+# 方法1
+from myfile import b
+
+print(b.name)
+```
+
+- **importlib使用**
+
+```python
+# 方法2
+import importlib
+
+res = 'myfile.b'
+ret = importlib.import_module(res)  # 内部处理：from myfile import b
+print(ret)
+
+# 该方法最小只能到模块(py文件名) 不能到py文件下面的变量(类 函数 变量...)
+```
+
+### importlib进阶使用##
+
+```python
+# notify.py 里面封装的三个通知函数
+def wechat(content):
+    print('微信通知：%s' % content)
+
+def qq(content):
+    print('qq通知：%s' % content)
+
+def email(content):
+    print('邮箱通知：%s' % content)
+
+"""  
+我在其他地方要使用这三个通知函数 可以全部导入 然后进行使用
+问题：如果我很多地方都使用了这三个通知函数 现在我需要把其中一种方式取消掉 怎么办?
+     1. 找到所有使用的地方 注释掉对应通知函数 - 可以解决 使用地方多的话 比较麻烦
+     2. importlib高阶使用
+"""
+from notify import *
+
+def send_all(content):
+    wechat(content)
+    # qq(content)
+    email(content)
+    
+if __name__ == '__main__':
+    send_all('啥时候放长假')
+    
+===============================
+# 解决上述问题 把notify通知的方法封装为类到一个包里面的三个模块
+notify/
+  - __init__.py  # 包文件
+  - email.py
+  - qq.py
+  - wechat.py
+
+# email.py
+class Email:
+    def __init__(self):
+        pass  # 发送邮件前需要做的前期准备工作
+
+    def send(self, content):    # 其他通知封装类似 都提供一个send方法
+        print('邮箱通知：%s' % content)
+        
+# 然后提供一个配置文件settings.py - django启发
+NOTIFY_LIST = [
+    'notify.email.Email',
+    # 'notify.qq.QQ',
+    'notify.wechat.Wechat',
+]
+
+# 重点：在notify包的__init__.py文件中做一下操作
+import settings    # 导入配置文件
+import importlib   # 导入importlib
+
+def send_all(content):
+    for path_str in settings.NOTIFY_LIST:
+        module_path, class_name = path_str.rsplit('.', maxsplit=1)  # 从右往左切 只切一次
+        # 拿到模块名和类名
+        # module_path = 'notify.email' class_name = 'Email'
+        # 1. 利用字符串导入模块
+        module = importlib.import_module(module_path)  # from notify import email
+        # 2. 利用反射获取类名
+        cls = getattr(module, class_name)  # 拿到类名 Email QQ Wechat
+        # 3. 生成类的对象(实例化)
+        obj = cls()
+        # 4. 利用鸭子类型直接拿调用send方法
+        obj.send(content)
+        
+# 最后使用 start.py
+"""
+这个时候 可扩展性非常高
+如果我们不想用哪个方法 直接去配置文件注释掉对应的配置即可
+需要加通知方法 也很方便
+"""
+import notify
+
+notify.send_all('通知')
 ```
 
 ## csrf跨站请求伪造
