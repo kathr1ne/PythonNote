@@ -9,6 +9,8 @@ date: 2021-02-22 23:00:00
 
 [DjangoRESTFramework官网](https://www.django-rest-framework.org/)
 
+[Django REST framework 中文教程](https://www.w3cschool.cn/lxraw/)
+
 ## RESTful API
 
 API接口： 通过网络 规定了前后台信息交互规则的url链接 也就是前后台信息交互的**媒介**
@@ -261,7 +263,7 @@ DRF通过上面几步很少的代码 就已经实现了/books/的5个接口：
 # ModelViewSet -> APIView -> View
 ```
 
-#### Django View源码
+#### View
 
 - **CBV简单实现**
 
@@ -334,7 +336,7 @@ def dispatch(self, request, *args, **kwargs):
     return handler(request, *args, **kwargs)
 ```
 
-#### RESTframework APIView源码
+#### APIView
 
 - **CBV简单实现**
 
@@ -548,13 +550,244 @@ print(add(5, 5))
 print(add.xyz)
 ```
 
-
-
-## 序列化组件
+## 序列化器 Serializer
 
 ```python
-
+"""
+序列化：序列化器会把模型对象转换为字典 经过response以后变成json字符串 
+       model对象 -> json
+       
+反序列化：把客户端发送过来的数据 经过request以后变成字典(框架封装) 序列化器可以把字典转成模型
+       json -> model对象
+       反序列化另一个作用：完成数据的校验功能(类似forms组件)
+"""
 ```
+
+### 序列化
+
+#### 简单使用
+
+```python
+"""
+GET 127.0.0.1:8000/books/1 获取书籍id为1的书籍信息
+  1. 写一个序列化的类 继承Serializer类
+  2. 在类中写想要序列化的字段 想序列化哪个字段 就在类中写哪个字段
+  3. 在视图类中使用 导入自定义序列化类 -> 实例化得到的序列化类对象(把要序列化的对象传入)
+  4. 序列化类的对象.data 是一个字典
+  5. 把字典返回 如果不使用rest_framework提供的Response 就得使用JsonResponse
+"""
+
+# urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('books/<int:pk>', views.BooksDetailView.as_view()),
+]
+
+# serializers.py
+# from rest_framework.serializers import Serializer
+from rest_framework import serializers
+
+class BookSerializer(serializers.Serializer):
+    """想要序列化的字段 不需要直接注释即可"""
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField()
+    price = serializers.DecimalField(max_digits=5, decimal_places=2)
+    author = serializers.CharField()
+    publish = serializers.CharField()
+
+# views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.http import JsonResponse
+
+from .models import Book
+from .serializers import BookSerializer
+
+class BooksDetailView(APIView):
+    def get(self, request, pk):
+        book = Book.objects.filter(pk=pk).first()
+        # 用一个类 毫无疑问：实例化 
+        # instance参数关键字传参或者第一个位置位置传参(源码)
+        serializer = BookSerializer(instance=book)
+        # serializer.data -> 序列化后的字典
+        print(serializer.data)
+        """
+        Response
+          使用drf Response返回 需要在settings.py注册rest_framework
+        Response会判断访问来源(user-agent) 来返回 渲染好的网页 或者是 json数据
+        
+        JsonResponse
+          无需再注册rest_framework
+          只会返回json数据
+        """
+        return Response(serializer.data)
+        # return JsonResponse(serializer.data)
+```
+
+#### 字段类型
+
+[SerializerFields](https://www.django-rest-framework.org/api-guide/fields/)
+
+[序列化器字段](https://www.w3cschool.cn/lxraw/lxraw-u4kq35ot.html)
+
+```python
+# 完整字段见上面参考链接
+CharField
+IntergerField
+DateField
+...
+```
+
+#### 字段选项
+
+```python
+# 检验功能 非常类似forms组件
+  1. 自带字段选项校验(更多参考字段链接详细内容)
+     - read_only
+     - required  默认为True
+     - max_length 
+       ...        
+  2. 局部钩子函数
+  3. 全局钩子函数
+```
+
+#### 修改数据
+
+```python
+"""
+PUT 127.0.0.1:8000/books/1 修改书籍主键为1的书籍信息
+  1. 写一个序列化的类 继承Serializer类
+  2. 在类中写想要反序列化的字段
+  3. 在视图类中使用 导入自定义序列化类 -> 实例化得到的序列化类对象(把要修改的对象 和 修改的数据传入)
+      # instance=要修改的对象
+      # data=修改的数据
+      serializer = BookSerializer(instance=book, data=request.data)
+   
+   4. 数据校验 
+      serializer.is_valid()
+      4.1 如果校验通过 就保存
+          serializer.save()  # 是序列化器的save()方法
+      4.2 如果校验不通过
+          返回错误信息
+          
+   5. 如果字段的校验规则不够 可以自己写钩子函数(局部和全局 类似forms)
+"""
+
+class BooksDetailView(APIView):
+    def get(self, request, pk):
+		...
+
+    def put(self, request, pk):
+        response_msg = {'status':100, 'msg':'成功'}
+        # 找到这个对象
+        book = Book.objects.filter(pk=pk).first()
+        # 直接用request.data的数据来修改原来的对象
+        
+           serializer = BookSerializer(book, request.data)
+        # 一定要数据验证(类似form表单验证)
+        if serializer.is_valid():
+            # 直接调用报错 需要重写update方法 接口规范了子类的行为 鸭子类型
+            # NotImplementedError: `update()` must be implemented.
+            serializer.save()  # 验证通过则返回
+            response_msg['data'] = serializer.data
+            # return Response(serializer.data)
+        else:
+            response_msg['status'] = 1001
+            response_msg['msg'] = '数据校验失败'
+            response_msg['data'] = serializer.errors
+        return Response(response_msg)
+    
+# 直接继承Serializer没有update方法 需要重写
+class BookSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(max_length=16, min_length=4)
+    price = serializers.DecimalField(max_digits=5, decimal_places=2)
+    author = serializers.CharField()
+    publish = serializers.CharField()
+
+    def update(self, instance, validated_data):
+        # instance是book这个对象
+        # validated_data是校验后的数据
+        instance.name = validated_data.get('name')
+        instance.price = validated_data.get('price')
+        instance.author = validated_data.get('author')
+        instance.publish = validated_data.get('publish')
+        instance.save()  # django ORM提供的
+        return instance
+```
+
+#### 数据校验钩子函数
+
+- **局部钩子**
+
+```python
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+
+class BookSerializer(serializers.Serializer):
+    ...
+
+    def validate_price(self, data):
+        """
+        validate_字段名(通过反射获取该方法) 接收一个参数
+        :param data: 就是price 可以对任意单一字段自定义校验
+        :return: data
+        """
+        # print(data)
+        # print(type(data))
+        if data > 10:
+            return data
+        # 校验失败 抛出异常
+        raise ValidationError('价格太低')
+        
+========================
+{
+    "status": 1001,
+    "msg": "数据校验失败",
+    "data": {
+        "price": [
+            "价格太低"
+        ]
+    }
+}
+```
+
+- **全局钩子**
+
+```python
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+
+class BookSerializer(serializers.Serializer):
+    ...
+    
+    def validate(self, attrs):
+        """
+        全局钩子：校验多个字段
+        :param attrs: 校验通过的数据(validated_data)
+        :return: attrs 
+        """
+        print(attrs)
+        author = attrs.get('author')
+        publish = attrs.get('publish')
+        if author == publish:
+            raise ValidationError('作者名字和出版社一致')
+        return attrs
+===============================    
+{
+    "status": 1001,
+    "msg": "数据校验失败",
+    "data": {
+        "non_field_errors": [
+            "作者名字和出版社一致"
+        ]
+    }
+}
+```
+
+
 
 
 
