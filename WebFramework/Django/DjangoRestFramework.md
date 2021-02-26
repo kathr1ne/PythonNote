@@ -1,6 +1,14 @@
 ---
 title: DjangoRESTframework
 date: 2021-02-22 23:00:00
+categories: 
+- PYTHON
+tags:
+- Python
+- Web
+- 前后端分离
+- RESTful
+- API
 ---
 
 # RESTFramework
@@ -188,14 +196,14 @@ Github的API就是这种设计 访问api.github.com会得到一个所有可用AP
 2. 服务器返回的数据格式 应该尽量使用JSON 避免使用XML
 ```
 
-## DRF初识
-### 安装
+# DRF初识
+## 安装
 
 ```python
 pip install djangorestframework==3.12.2
 ```
 
-### 简单使用
+## 简单使用
 
 ```python
 1. 在settings.py注册app
@@ -256,14 +264,14 @@ DRF通过上面几步很少的代码 就已经实现了/books/的5个接口：
 """
 ```
 
-### CBV源码
+## CBV源码
 
 ```python
 # ModelViewSet继承自View(django远程的View)
 # ModelViewSet -> APIView -> View
 ```
 
-#### View
+### View
 
 - **CBV简单实现**
 
@@ -336,7 +344,7 @@ def dispatch(self, request, *args, **kwargs):
     return handler(request, *args, **kwargs)
 ```
 
-#### APIView
+### APIView
 
 - **CBV简单实现**
 
@@ -550,7 +558,7 @@ print(add(5, 5))
 print(add.xyz)
 ```
 
-## 序列化器 Serializer
+# 序列化器 Serializer
 
 ```python
 """
@@ -563,9 +571,9 @@ print(add.xyz)
 """
 ```
 
-### 序列化
+## 序列化
 
-#### 简单使用
+### 简单使用
 
 ```python
 """
@@ -626,7 +634,7 @@ class BooksDetailView(APIView):
         # return JsonResponse(serializer.data)
 ```
 
-#### 字段类型
+### 字段类型
 
 [SerializerFields](https://www.django-rest-framework.org/api-guide/fields/)
 
@@ -640,7 +648,7 @@ DateField
 ...
 ```
 
-#### 字段选项
+### 字段选项
 
 ```python
 # 检验功能 非常类似forms组件
@@ -653,7 +661,7 @@ DateField
   3. 全局钩子函数
 ```
 
-#### 修改数据
+### 修改数据
 
 ```python
 """
@@ -718,7 +726,7 @@ class BookSerializer(serializers.Serializer):
         return instance
 ```
 
-#### 数据校验钩子函数
+### 数据校验钩子函数
 
 - **局部钩子**
 
@@ -791,7 +799,7 @@ class BookSerializer(serializers.Serializer):
 
 
 
-## 视图组件
+# 视图组件
 
 ```python
 
@@ -799,7 +807,7 @@ class BookSerializer(serializers.Serializer):
 
 
 
-## 解析器
+# 解析器
 
 ```python
 
@@ -807,7 +815,7 @@ class BookSerializer(serializers.Serializer):
 
 
 
-## 认证组件
+# 认证组件
 
 ```python
 
@@ -815,7 +823,7 @@ class BookSerializer(serializers.Serializer):
 
 
 
-## 权限组件
+# 权限组件
 
 ```python
 
@@ -823,7 +831,7 @@ class BookSerializer(serializers.Serializer):
 
 
 
-## 频率组件
+# 频率组件
 
 ```python
 
@@ -831,7 +839,7 @@ class BookSerializer(serializers.Serializer):
 
 
 
-## 分页器 响应器
+# 分页器 响应器
 
 ```python
 
@@ -839,7 +847,7 @@ class BookSerializer(serializers.Serializer):
 
 
 
-## url控制器 版本控制
+# url控制器 版本控制
 
 ```python
 
