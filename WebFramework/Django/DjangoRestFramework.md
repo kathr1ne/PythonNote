@@ -15,9 +15,9 @@ tags:
 
 [RESTful API 设计指南](http://www.ruanyifeng.com/blog/2014/05/restful_api.html)
 
-[DjangoRESTFramework官网](https://www.django-rest-framework.org/)
+[DjangoRESTframework官网](https://www.django-rest-framework.org/)
 
-[Django REST framework 中文教程](https://www.w3cschool.cn/lxraw/)
+[DjangoRESTframework 中文教程](https://www.w3cschool.cn/lxraw/)
 
 ## RESTful API
 
@@ -558,7 +558,9 @@ print(add(5, 5))
 print(add.xyz)
 ```
 
-# 序列化器 Serializer
+# 序列化器
+
+ **Serializer**
 
 ```python
 """
@@ -573,7 +575,7 @@ print(add.xyz)
 
 ## 序列化
 
-### 简单使用
+### 查询一个数据
 
 ```python
 """
@@ -615,9 +617,10 @@ from .serializers import BookSerializer
 
 class BooksDetailView(APIView):
     def get(self, request, pk):
+        # 获取数据对象
         book = Book.objects.filter(pk=pk).first()
         # 用一个类 毫无疑问：实例化 
-        # instance参数关键字传参或者第一个位置位置传参(源码)
+        # instance参数关键字传参或者第一个位置位置传参(源码) -> 序列化
         serializer = BookSerializer(instance=book)
         # serializer.data -> 序列化后的字典
         print(serializer.data)
@@ -648,7 +651,7 @@ DateField
 ...
 ```
 
-### 字段选项
+### 字段参数
 
 ```python
 # 检验功能 非常类似forms组件
@@ -656,10 +659,25 @@ DateField
      - read_only
      - required  默认为True
      - max_length 
+     - validators
+         验证器功能列表 应将其应用于输入字段输入 并引发验证错误或简单地返回
        ...        
   2. 局部钩子函数
   3. 全局钩子函数
+    
+# 通用字段参数
+read_only        表明该字段仅用于序列化输出 默认False
+write_only       表明该字段仅用于反序列化输入 默认False
+required         表明该字段在反序列化时必须输入 默认True
+default          反序列化时使用的默认值
+allow_null       表明该字段是否允许传入None 默认Flase
+validators       该字段使用的验证器
+error_messages   包含错误编号与错误信息的字典
+label            用于HTML展示API页面时 显示的字段名称
+help_text        用于HTML展示API页面时 显示的字段帮助提示信息
 ```
+
+## 反序列化
 
 ### 修改数据
 
@@ -684,16 +702,12 @@ PUT 127.0.0.1:8000/books/1 修改书籍主键为1的书籍信息
 """
 
 class BooksDetailView(APIView):
-    def get(self, request, pk):
-		...
-
     def put(self, request, pk):
         response_msg = {'status':100, 'msg':'成功'}
         # 找到这个对象
         book = Book.objects.filter(pk=pk).first()
-        # 直接用request.data的数据来修改原来的对象
-        
-           serializer = BookSerializer(book, request.data)
+        # 直接用request.data的数据来修改原来的对象 -> 反序列化
+        serializer = BookSerializer(book, request.data)
         # 一定要数据验证(类似form表单验证)
         if serializer.is_valid():
             # 直接调用报错 需要重写update方法 接口规范了子类的行为 鸭子类型
@@ -792,6 +806,355 @@ class BookSerializer(serializers.Serializer):
             "作者名字和出版社一致"
         ]
     }
+}
+```
+
+- **参数validators(非钩子函数 字段选项验证器 较少使用)**
+
+```python
+def check_author(data):
+    if data.startswith('sb'):
+        raise ValidationError('作者名字不能以sb开头')
+    return data
+
+class BookSerializer(serializers.Serializer):
+    ...
+    # 使用字段参数：验证器
+    author = serializers.CharField(validators=[check_author])
+=============================
+{
+    "status": 100,
+    "msg": "数据校验失败",
+    "data": {
+        "author": [
+            "作者名字不能以sb开头"
+        ]
+    }
+}
+
+"""
+加上上面的钩子函数和自带的字段验证 总共有三种验证数据的方式：
+  1. 字段参数自带的验证参数们
+  2. 局部钩子/全局钩子函数
+  3. 参数：validators 验证器
+  
+抛出无效数据的异常
+  .is_valid()方法使用可选的raise_exception标志 如果存在验证错误将会抛出一个serializers.ValidationError异常
+  这些异常由REST framework提供的默认异常处理程序自动处理 
+  默认情况下将返回HTTP 400 Bad Request响应
+"""
+
+# 如果数据无效就返回400响应
+serializer.is_valid(raise_exception=True)
+```
+
+### 序列化反序列化字段处理
+
+```python
+"""
+问题：我们序列化的时候和反序列化的时候 使用的字段数目不全部一致
+     比如主键id 序列化展示 反序列化不应该输入
+
+解决：
+  1. 写两个serializer类 一个用于序列化 一个用于反序列化 -> 冗余度非常高 麻烦
+  2. 字段参数解决
+      read_only    表明该字段仅用于序列化输出 默认False
+      write_only   表名该字段仅用于反序列化输入 默认False
+"""
+class BookSerializer(serializers.Serializer):
+    """
+    read_only=True
+      - 序列化输出 有该字段
+      - 反序列化传入数据 不需要传该字段 错误的输入所有的read_only字段都将被忽略
+    write_only
+      - 序列化输出 没有该字段
+      - 反序列化传入数据 必须传入该字段 否则校验失败
+    """
+    id = serializers.IntegerField(read_only=True)
+    publish = serializers.CharField(max_length=64, min_length=2, write_only=True)
+```
+
+## 其余API操作
+### 查询所有数据
+
+```python
+# URL
+path('books/', views.Books.as_view())
+
+# View
+class Books(APIView):
+    def get(self, request):
+        books = Book.objects.all()
+        # 序列化多条 需要加参数：many=True
+        serializer = BookModelSerializer(instance=books, many=True)
+        return Response(serializer.data)
+```
+
+### 新增数据
+
+```python
+# URL
+path('books/', views.Books.as_view())
+
+# models.py
+class Books(APIView):
+    def post(self, repost):
+        # 修改才有instance 新增没有instance 只有data
+        # 必须关键字传参 位置传参会给到第一个位置参数:instance
+        book_ser = BookModelSerializer(data=repost.data)
+        # 校验字段
+        if book_ser.is_valid():
+            book_ser.save()
+            return Response(book_ser.data)
+        return Response(book_ser.errors)
+    
+# serializers.py 需要重写create()方法
+class BookSerializer(serializers.Serializer):
+    def create(self, validated_data):
+        """
+        :param validated_data: dict正好可以**解构
+        :return: 
+        """
+        return Book.objects.create(**validated_data)
+```
+
+### 删除数据
+
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Book
+
+# 删除无需序列化器
+class BooksDetail(APIView):
+    def delete(self, request, pk):
+        """删除一个数据"""
+        Book.objects.filter(pk=pk).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+```
+
+## 自定义响应内容
+
+```python
+# utils.py
+class MyResponse:
+    def __init__(self):
+        self.status = 100
+        self.mgs = 'success'
+
+    @property
+    def get_dict(self):
+        return self.__dict__
+
+# 使用的时候 实例化再修改属性即可
+if __name__ == '__main__':
+    res = MyResponse()
+    res.status = 101
+    res.msg = '数据校验失败'
+    res.data = {'name': 'Minho'}
+    print(res.get_dict)
+```
+
+## 模型类序列化器
+
+```python
+class BookModelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Book                  # 对应models.py中的表模型(要序列化哪个表的数据)
+        # fields = '__all__'          # __all__标识序列化所有字段
+        # fields = ['name', 'price']  # 只序列化指定字段
+        exclude = ['name']            # 跟fields不能都写 写哪个字段标识排除哪个字段
+        read_only_fields = ['price']
+        extra_kwargs = {
+            'author': {'write_only': True}
+        }
+
+"""
+write_only_fields 弃用 -> 使用extra_kwargs解决
+  可以通过使用extra_kwargs选项快捷地在字段上指定任意附加的关键字参数
+  类似于：Serializer的 name = serializers.CharField(max_length=16, min_length=4)
+  
+示例：
+  extra_kwargs = {'password': {'write_only': True},
+                  'author': {'write_only': True},}
+                  
+备注：
+  继承ModelSerializer之后 不用再自己重写 .update() 和 .create()方法
+  其他使用方式和继承Serializer 一摸一样
+"""        
+```
+
+## many=True源码分析
+
+```python
+# 序列化多条数据的时候 需要传 many=True
+class Books(APIView):
+    def get(self, request):
+        # 序列化单条
+        book = Book.objects.all()
+        books_one_ser = BookModelSerializer(instance=book)
+        # 序列化多条
+        books = Book.objects.all()
+        books_ser = BookModelSerializer(instance=books, many=True)
+        print(type(books_one_ser))
+        print(type(books_ser))
+        return Response(books_ser.data)
+ 
+# many=True时 返回的结果跟不传 不是同一个类的对象
+单条类型： <class 'drftutorial.book.serializer.BookModelSerializer'>
+多条类型： <class 'rest_framework.serializers.ListSerializer'> 
+
+"""
+对象的生成：先调用类的__new__方法 生成空对象
+实例化：类名(参数) 调用类的__init__()方法
+
+类的__new__方法 控制对象的生成 -> 由此猜测BookModelSerializer类的__new__方法做了处理 根据是否有many=True参数 生成不同的类对象
+"""
+class BaseSerializer(Field):
+    ...
+    def __new__(cls, *args, **kwargs):
+        # We override this method in order to automatically create
+        # `ListSerializer` classes instead when `many=True` is set.
+        if kwargs.pop('many', False):
+            return cls.many_init(*args, **kwargs)
+        # 没有传many=True 正常实例化
+        return super().__new__(cls, *args, **kwargs)
+    
+    @classmethod
+    def many_init(cls, *args, **kwargs):
+		...
+        """
+        如果传入many=True 调用该方法 生成新得类对象 里面就是一个个得Serializer对象
+        """
+        return list_serializer_class(*args, **list_kwargs)
+```
+
+## Serializer高级用法
+
+[关联字段](https://www.django-rest-framework.org/api-guide/relations/)
+
+### 一对多关系字段
+
+- **source参数**
+
+```python
+source参数就是指定序列化对象的属性
+该属性可以是模型类的字段属性
+也可以是该模型类的方法(类方法本质也是类属性 本质一样）
+            
+"""
+source的使用 下面三个功能：
+  1. 可以改字段名字  xxx = serializers.CharField(max_length=32, source='title')
+  2. 可以.跨表取属性 publish = serializers.CharField(source='publish.email')
+  3. 可以执行方法 publish_date = serializers.DateTimeField(source='test')  # test不是model类对应字段 而是自定义函数
+"""
+```
+
+**source=对象属性**
+
+```python
+"""
+一对多关系字段：
+  1. 模型类__str__魔术方法
+     publish = serializers.CharField() -> book.publish -> 获取publish的__str__方法返回值
+  
+  2. source参数用法
+     publish = serializers.CharField(source='publish.email')
+     source参数可以直接取模型类的字段
+       2.1 更换序列化器显示的字段名称(隐藏真正的数据库字段) 用source与实际的数据库模块字段对应 
+       xxx = serializers.CharField(max_length=32, source='title')       
+       2.2 一对多关系中 可以取到关联关系表中的其他字段(跨表)
+       publish = serializers.CharField(source='publish.email')
+"""
+
+from rest_framework import serializers
+
+class BookSerializer(serializers.Serializer):
+    xxx = serializers.CharField(max_length=32, source='title')
+    price = serializers.DecimalField(max_digits=8, decimal_places=2)
+    publish_date = serializers.DateTimeField()
+    # book.publish 外键关联字段 直接写 显示结果会显示__str__方法的结果
+    publish = serializers.CharField(source='publish.email')
+    # book.authors None -> book.authors.all()   
+```
+
+**source=对象方法**
+
+```python
+# serializers.py
+from rest_framework import serializers
+
+class BookSerializer(serializers.Serializer):
+    xxx = serializers.CharField(max_length=32, source='title')
+    publish_date = serializers.DateTimeField(source='test')
+    
+# models.py
+class Book(models.Model):
+    title = models.CharField(max_length=32)
+    
+    def test(self):
+        return 'book.test method'
+
+"""
+source指定的方法return内容就是序列化的内容
+"""
+```
+
+**结果示例**
+
+```json
+{
+    "xxx": "红楼梦",
+    "publish_date": "book.test method",
+}
+```
+
+
+
+### 多对多关系字段
+
+- **SerializerMethodField**
+
+```python
+from rest_framework import serializers
+
+class BookSerializer(serializers.Serializer):
+	...
+    authors = serializers.SerializerMethodField()
+
+    def get_authors(self, obj):
+        # obj: book对象
+        authors = obj.authors.all()  # 跨表拿出所有作者
+        return [{'name': author.name, 'age': author.age} for author in authors]
+
+"""
+serializer通过字段取出多对多关系表数据：
+  SerializerMethodField(method_name=None)
+  这是一个只读字段 它通过在附加的序列化器类上调用一个方法来获取其值 它可以用于将任何类型的数据添加到对象的序列化表示中
+  该字段会绑定一个方法 如果没有指定method_name  则默认为：get_<field_name>(self, obj): pass
+  该方法返回什么 序列化的字段就显示什么内容
+"""
+```
+
+**结果示例**
+
+```python
+{
+    "xxx": "红楼梦",
+    "price": "123.45",
+    "publish_date": "2021-01-05T20:43:26Z",
+    "publish": "南京出版社",
+    "authors": [
+        {
+            "name": "minho",
+            "age": 25
+        },
+        {
+            "name": "kimi",
+            "age": 46
+        }
+    ]
 }
 ```
 
