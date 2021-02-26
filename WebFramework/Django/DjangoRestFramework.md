@@ -198,12 +198,7 @@ pip install djangorestframework==3.12.2
 ```python
 1. 在settings.py注册app
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
+     ...
     'rest_framework',
 ]
 
@@ -250,7 +245,7 @@ urlpatterns = [
 urlpatterns += router.urls
 
 """
-DERF通过上面几步很少的代码 就已经实现了/books/的5个接口：
+DRF通过上面几步很少的代码 就已经实现了/books/的5个接口：
 127.0.0.1:8000/books/    GET    获取所有书籍
 127.0.0.1:8000/books/    POST   新增书籍
 127.0.0.1:8000/books/2/  GET    获取主键为2的书籍详情
@@ -266,11 +261,11 @@ DERF通过上面几步很少的代码 就已经实现了/books/的5个接口：
 # ModelViewSet -> APIView -> View
 ```
 
-#### View源码解读
+#### Django View源码
+
+- **CBV简单实现**
 
 ```python
-# CBV简单实现
-
 # urls.py
 urlpatterns = [
     path('books/', views.Books.as_view()),
@@ -282,13 +277,18 @@ from django.http import JsonResponse
 
 class Books(View):
     def get(self, request):
-        return JsonResponse({'c++': 123.00})
+        return JsonResponse({'c++': 111})
     
-127.0.0.1:8000/books/  GET  实现GET请求方法
-    
-================================
-源码解读：切入口：as_view()
 """
+127.0.0.1:8000/books/  GET  通过CBV实现GET请求方法
+"""
+```
+
+- **as_view()**
+
+```python
+"""
+源码解读：切入口：as_view()
 本质还是FBV: 
     views.Books.as_view() ->  as_view()返回一个函数对象 -> views.Books.view
     
@@ -332,10 +332,11 @@ def dispatch(self, request, *args, **kwargs):
         handler = self.http_method_not_allowed
     # 自动调用get方法
     return handler(request, *args, **kwargs)
-
 ```
 
-#### APIView源码解读
+#### RESTframework APIView源码
+
+- **CBV简单实现**
 
 ```python
 # urls.py
@@ -348,8 +349,14 @@ from rest_framework.views import APIView
 class BooksAPIView(APIView):
     def get(self, request):
         return JsonResponse({'APIView': 666})
-====================
-源码解读：切入口还是 as_view()  # APIView的as_view()
+```
+
+- **as_view()**
+
+```python
+"""
+源码解读：切入口还是 as_view() -> APIView的as_view() -> view 函数内存地址
+"""
 @classmethod  # 类的绑定方法
 def as_view(cls, **initkwargs):
     view = super().as_view(**initkwargs)  # 调用父类的as_view方法
@@ -359,23 +366,30 @@ def as_view(cls, **initkwargs):
     # 添加装饰器的另一种方法 @方式是语法糖 本质就是传入一个被装饰函数给装饰器函数当作实参
     return csrf_exempt(view)
 
-=> URL视图还可以这么写 path('test/', csrf_exempt(as_view))
+# 使用csrf装饰器 URL视图还可以这么写 
+path('test/', csrf_exempt(as_view))
 
-# 请求来 -> 路由匹配 -> view(request) -> 
+"""
+发起请求 -> 路由匹配成功 -> view(request) -> 调用dispath() -> mro属性查找顺序 self.dispath会执行到APIView的dispath方法 而不再走View类的dispath -> 把请求方法转为小写 -> 通过反射去对象中查找 有没有改方法定义的属性 有则传入request并执行
+"""
 
 # APIView的disapth
 def dispatch(self, request, *args, **kwargs):
-    """
-    `.dispatch()` is pretty much the same as Django's regular dispatch,
-    but with extra hooks for startup, finalize, and exception handling.
-    """
     self.args = args
     self.kwargs = kwargs
+    # request参数是当次请求的request对象
+    # 请求过来 wsgi注入一个envrion字段 django把它包装成一个request对象
+    
+    # 然后重新赋值的request 是初始化处理后的一个新的Request对象
     request = self.initialize_request(request, *args, **kwargs)
+    
+    # 现在视图函数拿到的request 已经不是django原生给我们封装的request
+    # 而是drf自己定义的request对象(mro) 以后视图函数再使用的request对象 就是这个新的drf定义的对象
     self.request = request
     self.headers = self.default_response_headers  # deprecate?
 
     try:
+        # 三大认证模块
         self.initial(request, *args, **kwargs)
 
         # Get the appropriate handler method
@@ -384,23 +398,151 @@ def dispatch(self, request, *args, **kwargs):
                               self.http_method_not_allowed)
         else:
             handler = self.http_method_not_allowed
-
+		 # 响应模块
         response = handler(request, *args, **kwargs)
 
     except Exception as exc:
+       # 异常模块
         response = self.handle_exception(exc)
-
+	
+    # 渲染模块
     self.response = self.finalize_response(request, response, *args, **kwargs)
     return self.response
+
+# 封装drf自己的request对象
+def initialize_request(self, request, *args, **kwargs):
+    parser_context = self.get_parser_context(request)
+    # django原来的request 被封装到Request里面 
+    # self._request 原生的request
+    # self.request  drf封装的request
+    
+    # 返回DRF封装的Request类实例化之后的对象
+    return Request(
+        request,    # 原生的request对象
+        # 获取解析类
+        parsers=self.get_parsers(),
+        authenticators=self.get_authenticators(),
+        negotiator=self.get_content_negotiator(),
+        parser_context=parser_context
+    ) 
 ```
 
-**补充**
+- **Request**
+
+```python
+"""
+from rest_framework.request import Request
+
+只要继承了APIView 视图类中的request对象 都是新的
+也就是上面导入路径这个Request的对象(实例)
+
+使用使用新的request对象 就像使用之前的request是一模一样的(因为重写了__getattr__方法)
+
+def __getattr__(self, attr):
+    try:
+        return getattr(self._request, attr)
+    except AttributeError:
+        return self.__getattribute__(attr)
+"""
+
+class Request:
+    """
+    Wrapper allowing to enhance a standard `HttpRequest` instance.
+
+    Kwargs:
+        - request(HttpRequest). The original request instance.
+        - parsers(list/tuple). The parsers to use for parsing the
+          request content.
+        - authenticators(list/tuple). The authenticators used to try
+          authenticating the request's user.
+    """
+
+    def __init__(self, request, parsers=None, authenticators=None,
+                 negotiator=None, parser_context=None):
+        assert isinstance(request, HttpRequest), (
+            'The `request` argument must be an instance of '
+            '`django.http.HttpRequest`, not `{}.{}`.'
+            .format(request.__class__.__module__, request.__class__.__name__)
+        )
+        # self._request 原生的request
+        self._request = request
+        self._data = Empty
+		...
+        
+        
+# restframework封装的request对象
+"""
+django封装的request对象没有.data {}
+它是一个字典 
+  - post请求不管使用什么编码(form/urlencoded/json) 传过来的数据 都在request.data
+  - get请求
+"""
+request.data    
+```
+
+- **取POST请求数据**
+
+|            | django原生request(request.POST) | drf封装后的Request对象(request.data) |
+| ---------- | ------------------------------- | ------------------------------------ |
+| form       | 有数据 QueryDict                | 有数据 QueryDict                     |
+| urlencoded | 有数据 QueryDict                | 有数据 QueryDict                     |
+| json       | 无数据                          | 有数据 普通字典                      |
+
+- **取GET请求url中的数据**
+
+```python
+# drf Request类方法
+# self._request.GET = request.query_params
+# django原来取： request.GET
+# drf取： request.query_params
+
+@property
+def query_params(self):
+    return self._request.GET
+```
+
+- **APIView的initial方法**
+
+```python
+# dispath中调用 initial方法
+# request参数 已经是新的request
+def initial(self, request, *args, **kwargs):
+	...
+    # Ensure that the incoming request is permitted
+    """
+    perform_authentication
+    认证组件：检验用户 - 游客、合法用户、非法用户
+      游客： 代表检验通过 直接进入下一步校验(权限检验)
+      合法用户：代表校验通过 将用户存储再request.user中 再进入下一步校验(权限校验)
+      非法用户：代表校验失败 抛出异常 返回403权限异常结果
+    """
+    self.perform_authentication(request)
+    """
+    check_permissions
+    权限组件：校验用户权限 - 必须登录、所有用户、登录读写游客只读、自定义用户角色
+      认证通过：可以进入下一步校验(频率认证)
+      认证失败：抛出异常 返回403权限异常结构
+    """
+    self.check_permissions(request)
+    
+    """
+    check_throttles
+    频率组件：限制视图接口被访问的频率次数 - 限制的条件(IP/id/唯一键)、频率周期时间(s/m/h)、频率的次数(3/s)
+    没有达到限制：正常访问接口
+    达到限制：限制时间之内不能访问 限制时间达到后 可以重新访问
+    """
+    self.check_throttles(request)
+```
+
+- **补充**
 
 ```python 
 def add(x, y):
     return x + y
 
-add.xyz = 'xyz111'  # 由于Python中一切皆对象 所以都可以设置属性 取出属性
+# 由于Python中一切皆对象 所以都可以设置属性 取出属性
+# Python源码中使用非常多
+add.xyz = 'xyz111'  
 
 print(add(5, 5))
 print(add.xyz)
@@ -408,9 +550,63 @@ print(add.xyz)
 
 
 
+## 序列化组件
+
+```python
+
+```
 
 
-## 序列化
+
+## 视图组件
+
+```python
+
+```
+
+
+
+## 解析器
+
+```python
+
+```
+
+
+
+## 认证组件
+
+```python
+
+```
+
+
+
+## 权限组件
+
+```python
+
+```
+
+
+
+## 频率组件
+
+```python
+
+```
+
+
+
+## 分页器 响应器
+
+```python
+
+```
+
+
+
+## url控制器 版本控制
 
 ```python
 
