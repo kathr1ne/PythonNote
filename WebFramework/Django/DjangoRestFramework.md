@@ -1465,7 +1465,7 @@ token: xxx
 ```python
 """
 响应状态码： 
-  直接使用status定义的状态码
+  直接使用status定义的状态码 默认返回 200 OK
   它把所有使用到的状态码都定义成了常量 将数字对应了更明确的标识符
   return Response({'name': 'minho'},
                   status=status.HTTP_200_OK,
@@ -1593,8 +1593,259 @@ HTTP_511_NETWORK_AUTHENTICATION_REQUIRED = 511
 
 # 视图
 
-```python
+## 两个视图基类
 
+```python
+APIView         # 继承django View
+GenericAPIView  # 继承drf APIVIew
+```
+
+### APIView
+
+- **继承APIView实现5个常用接口**
+
+```python
+# 前面视图类继承APIView写CBV 已经能比较快速的写出5个常用接口
+# CBV代码如下：
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Book
+from .serializers import BookSerializer
+
+class BooksDetail(APIView):
+    def get(self, request, pk):
+        """获取一个数据"""
+        book = Book.objects.filter(pk=pk).first()
+        serializer = BookSerializer(instance=book)
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        """修改一个数据"""
+        book = Book.objects.filter(pk=pk).first()
+        serializer = BookSerializer(book, request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        """删除一个数据"""
+        Book.objects.filter(pk=pk).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class BooksList(APIView):
+    def get(self, request):
+        """获取数据列表(所有数据)"""
+        books = Book.objects.all()
+        serializer = BookSerializer(instance=books, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        """新增一个数据"""
+        serializer = BookSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+```
+
+### GenericAPIVIew
+
+- **源码分析**
+
+```python
+class GenericAPIView(views.APIView):
+    queryset = None
+    serializer_class = None
+    ...
+    
+    def get_queryset(self):
+        assert self.queryset is not None, (
+            "'%s' should either include a `queryset` attribute, "
+            "or override the `get_queryset()` method."
+            % self.__class__.__name__
+        )
+
+        queryset = self.queryset
+        if isinstance(queryset, QuerySet):
+            # Ensure queryset is re-evaluated on each request.
+            queryset = queryset.all()
+        return queryset    
+"""
+看GenericAPIView源码发现 继承该类 需要覆盖2个类属性：
+  - queryset -> QuertSet对象 - 指定使用哪个模型
+  - serializer_class -> 序列化器 - 指定使用哪个序列化器来序列化上面模型类对应的数据
+  
+看get_queryset(self)方法知道 queryset可以写两种写法
+  - queryset = Book.object.all()
+  - queryset = Book.object  # 源码会自己判断
+"""
+```
+
+- **继承GenericView实现上面APIView的接口功能**
+```python
+"""
+基于GenericAPIView实现上面5个接口 其实非常简单
+通过源码我们发现下面规律
+"""
+```
+
+| 功能描述         | APIView                                                  | GenericView                                                  |
+| ---------------- | -------------------------------------------------------- | ------------------------------------------------------------ |
+| 获取所有数据     | `books = Book.objects.all()`                             | `books = self.get_queryset()`                                |
+| 获取单个数据     | `book = Book.objects.filter(pk=pk).first()`              | `book = self.get_object()`                                   |
+| 序列化所有数据   | `serializer = BookSerializer(instance=books, many=True)` | `serializer = self.get_serializer(instance=books, many=True)` |
+| 序列化单个数据   | `serializer = BookSerializer(instance=book)`             | `serializer = self.get_serializer(instance=book)`            |
+| 反序列化单个数据 | `serializer = BookSerializer(data=request.data)`         | `serializer = self.get_serializer(data=request.data)`        |
+| 删除数据         | `Book.objects.filter(pk=pk).delete()`                    | `self.get_object().delete()`                                 |
+
+**发现以上规律后 使用GenericView重写上面5个接口则非常简单**
+
+```python
+from rest_framework.generics import GenericAPIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Book
+from .serializers import BookSerializer
+
+class BooksDetail(GenericAPIView):
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+
+    def get(self, request, pk):
+        book = self.get_object()
+        serializer = self.get_serializer(instance=book)
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        book = self.get_object()
+        serializer = self.get_serializer(book, request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        self.get_object().delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class BooksList(GenericAPIView):
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+
+    def get(self, request):
+        books = self.get_queryset()
+        serializer = self.get_serializer(instance=books, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+  
+"""
+继承GenericView重写这5个接口之后 有什么优势?
+  我们只要把具体方法里面的之前表达业务字段的变量(book/books) 替换成 通用的没有具体含义的变量(如：obj)
+  视图函数的代码实现就变得非常通用
+
+如何通用?
+  我们需要序列化其他模型类里面的数据的时候 只需要完成下面三步即可完成CBV视图函数的代码编写
+  1. 赋值粘贴代码
+  2. 修改CBV类名(如：BookList -> UserList)
+  3. 重写赋值 queryset 和 serializer_class 两个类属性
+"""
+
+问题：
+  这一步写完之后 虽然比较法方便 但是你会发现具体方法的代码既然都一样(冗余度大) 
+  每次都要拷贝同样的代码 只是替换不同的数据模型以及对应模型的序列化器
+  那我们如果把这些方法通用的代码都封装为不同的Mixin类 然后CBV视图直接使用多继承的方式 岂不是更加方便和简介
+```
+
+## 5个视图扩展Mixin类
+
+```python
+# 5个Mixin子类
+from rest_framework.mixins import ListModelMixin      # def get(self, requst): pass
+from rest_framework.mixins import CreateModelMixin    # def post(self, request): pass
+from rest_framework.mixins import RetrieveModelMixin  # def get(self, request, pk): pass
+from rest_framework.mixins import UpdateModelMixin    # def put(self, request, pk): pass
+from rest_framework.mixins import DestroyModelMixin   # def delete(self, request, pk): pass
+```
+
+**基于GenericAPIView和5个Mixin类重写书籍管理接口**
+
+```python
+from rest_framework.mixins import CreateModelMixin, ListModelMixin
+from rest_framework.mixins import DestroyModelMixin, RetrieveModelMixin, UpdateModelMixin
+from rest_framework.generics import GenericAPIView
+from .models import Book
+from .serializers import BookSerializer
+
+class BooksDetail(RetrieveModelMixin, UpdateModelMixin, DestroyModelMixin, GenericAPIView):
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+
+    def get(self, request, pk):
+        return self.retrieve(request, pk)
+
+    def put(self, request, pk):
+        return self.update(request, pk)
+
+    def delete(self, request, pk):
+        return self.destroy(request, pk)
+
+class BooksList(ListModelMixin, CreateModelMixin, GenericAPIView):
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+
+    def get(self, request):
+        return self.list(request)
+
+    def post(self, request):
+        return self.create(request)
+```
+
+## 9个GenericAPIView视图子类
+
+```python
+"""
+上面使用多继承 继承对应方法的Mixin类和GenericView类重写几个接口 已经非常简介优雅
+drf还提供了更方便的继承方法(drf自己完成对应的Mixin和GenericView的继承 你只需要按需继承drf提供的新的类即可)
+"""
+from rest_framework.generics import *
+
+# 新增一个对象 POST
+class CreateAPIView(mixins.CreateModelMixin, GenericAPIView): pass
+
+# 返回所有对象 GET
+class ListAPIView(mixins.ListModelMixin, GenericAPIView): pass
+
+# 返回一个对象 GET  retrieve: 取回
+class RetrieveAPIView(mixins.RetrieveModelMixin, GenericAPIView): pass
+
+# 删除一个对象 DELETE
+class DestroyAPIView(mixins.DestroyModelMixin, GenericAPIView): pass
+
+# 更新一个对象 PUT/PATCH
+class UpdateAPIView(mixins.UpdateModelMixin, GenericAPIView): pass
+
+# List 返回所有对象|新增一个对象
+class ListCreateAPIView(mixins.ListModelMixin, mixins.CreateModelMixin, GenericAPIView): pass
+
+# 限制删除单个对象 返回一个对象|更新一个对象
+class RetrieveUpdateAPIView(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, GenericAPIView): pass
+
+# 限制更新单个对象 返回一个对象|删除一个对象
+class RetrieveDestroyAPIView(mixins.RetrieveModelMixin, mixins.DestroyModelMixin, GenericAPIView): pass
+
+# Detail 返回一个对象|更新一个对象|删除一个对象
+class RetrieveUpdateDestroyAPIView(mixins.RetrieveModelMixin, 
+                                   mixins.UpdateModelMixin,
+                                   mixins.DestroyModelMixin, 
+                                   GenericAPIView): pass
 ```
 
 
