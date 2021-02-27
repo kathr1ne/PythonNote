@@ -437,7 +437,7 @@ def initialize_request(self, request, *args, **kwargs):
     ) 
 ```
 
-- **Request**
+### Request
 
 ```python
 """
@@ -560,6 +560,12 @@ print(add.xyz)
 
 # 序列化器
 
+[drf-Serializer](https://www.django-rest-framework.org/api-guide/serializers/)
+
+[drf-Serializer-fileds](https://www.django-rest-framework.org/api-guide/fields/)
+
+[drf-Serializer-relations](https://www.django-rest-framework.org/api-guide/relations/)
+
  **Serializer**
 
 ```python
@@ -569,8 +575,33 @@ print(add.xyz)
        
 反序列化：把客户端发送过来的数据 经过request以后变成字典(框架封装) 序列化器可以把字典转成模型
        json -> model对象
-       反序列化另一个作用：完成数据的校验功能(类似forms组件)
+       反序列化另一个作用：完成数据的校验功能(类似forms组件)  
 """
+
+1. Serializer类 必须写一个类继承它 想序列化什么字段就在里面写字段(source可以修改序列化出来的字段名 获取取属性 .跨表)
+
+2. 序列化queryset(列表)对象和真正(单个)的对象 many=True的作用 instance=要序列化的对象(模型类对象 也就是模型类实例)
+
+3. 反序列化 instance=要序列化的对象 data=request.data(新增没有instance参数)
+
+4. 字段验证 序列化类中 给字段加属性(字段参数) 局部和全局钩子函数|字段参数的validaores=[] 
+   视图函数中调用 序列化对象.is_valid(raise_exception=True)进行验证 raise_exception参数默认False 如果为True 验证不通过直接抛出异常
+    
+5. 反序列化数据保存
+   5.1 修改保存 -> 调用序列化对象的.save() -> 触发序列化类的.update方法
+   5.2 新增保存 -> 调用序列化对象的.save() -> 触发序列化类的.create方法
+
+   备注：
+   如果自定义序列化类不是继承的ModelSerializer 需要重写 .update方法和.create方法(可以很复杂)
+   如果反序列的数据中有需要保存到第三张表的 需要在重写的方法额外处理
+    
+6. ModelSerializer 跟Model做了对应 写法固定 字段参数直接用 extra_kwargs
+   其余用法和继承Serializer一摸一样(包括全局/局部钩子函数)
+    
+7. many=True 可以序列化多条的原因
+
+8. 接口 鸭子类型
+           
 ```
 
 ## 序列化
@@ -691,8 +722,11 @@ PUT 127.0.0.1:8000/books/1 修改书籍主键为1的书籍信息
       # data=修改的数据
       serializer = BookSerializer(instance=book, data=request.data)
    
-   4. 数据校验 
-      serializer.is_valid()
+   4. 数据校验
+      # raise_exception参数默认为False
+      # 如果为True 验证不通过直接抛出异常
+      serializer.is_valid(raise_exception=True)
+      
       4.1 如果校验通过 就保存
           serializer.save()  # 是序列化器的save()方法
       4.2 如果校验不通过
@@ -742,6 +776,14 @@ class BookSerializer(serializers.Serializer):
 
 ### 数据校验钩子函数
 
+```python
+先自己字段参数验证 
+-> 如果该字段有局部钩子函数 走该函数验证该字段
+-> 所有字段按照该顺序验证完成 看是否有全局钩子验证函数
+-> 全局钩子函数验证(此时数据已经经过第一次校验 validated_data)
+-> 验证完成
+```
+
 - **局部钩子**
 
 ```python
@@ -763,8 +805,11 @@ class BookSerializer(serializers.Serializer):
             return data
         # 校验失败 抛出异常
         raise ValidationError('价格太低')
-        
-========================
+```
+
+**输出示例**
+
+```json
 {
     "status": 1001,
     "msg": "数据校验失败",
@@ -797,7 +842,11 @@ class BookSerializer(serializers.Serializer):
         if author == publish:
             raise ValidationError('作者名字和出版社一致')
         return attrs
-===============================    
+```
+
+**输出示例**
+
+```json
 {
     "status": 1001,
     "msg": "数据校验失败",
@@ -821,16 +870,6 @@ class BookSerializer(serializers.Serializer):
     ...
     # 使用字段参数：验证器
     author = serializers.CharField(validators=[check_author])
-=============================
-{
-    "status": 100,
-    "msg": "数据校验失败",
-    "data": {
-        "author": [
-            "作者名字不能以sb开头"
-        ]
-    }
-}
 
 """
 加上上面的钩子函数和自带的字段验证 总共有三种验证数据的方式：
@@ -846,6 +885,20 @@ class BookSerializer(serializers.Serializer):
 
 # 如果数据无效就返回400响应
 serializer.is_valid(raise_exception=True)
+```
+
+**输出示例**
+
+```json
+{
+    "status": 100,
+    "msg": "数据校验失败",
+    "data": {
+        "author": [
+            "作者名字不能以sb开头"
+        ]
+    }
+}
 ```
 
 ### 序列化反序列化字段处理
@@ -915,6 +968,8 @@ class BookSerializer(serializers.Serializer):
         :param validated_data: dict正好可以**解构
         :return: 
         """
+        # 如果validated_data的数据 不是全部需要 
+        # 就需要拿出来额外处理 不能直接双**解构
         return Book.objects.create(**validated_data)
 ```
 
@@ -960,6 +1015,8 @@ if __name__ == '__main__':
 
 ```python
 class BookModelSerializer(serializers.ModelSerializer):
+    # ModelSerializer 也可以使用source参数 用法一样
+    pce = serializers.CharField(source='publish.price')
     class Meta:
         model = Book                  # 对应models.py中的表模型(要序列化哪个表的数据)
         # fields = '__all__'          # __all__标识序列化所有字段
@@ -983,6 +1040,27 @@ write_only_fields 弃用 -> 使用extra_kwargs解决
   继承ModelSerializer之后 不用再自己重写 .update() 和 .create()方法
   其他使用方式和继承Serializer 一摸一样
 """        
+```
+
+**输出示例**
+
+```json
+[
+    {
+        "nid": 1,
+        "pce": "129.11",
+        "name": "红楼梦",
+        "price": "129.11",
+        "publish": "北京出版社"
+    },
+    {
+        "nid": 3,
+        "pce": "192.45",
+        "name": "python",
+        "price": "192.45",
+        "publish": "xx出版社"
+    },
+]
 ```
 
 ## many=True源码分析
@@ -1071,6 +1149,8 @@ source的使用 下面三个功能：
 from rest_framework import serializers
 
 class BookSerializer(serializers.Serializer):
+    # 这部分字段相当于隐藏了模型前缀 相当于取book得属性(包括方法)
+    # book.xxx | book.price | book.publish_data...
     xxx = serializers.CharField(max_length=32, source='title')
     price = serializers.DecimalField(max_digits=8, decimal_places=2)
     publish_date = serializers.DateTimeField()
@@ -1097,11 +1177,11 @@ class Book(models.Model):
         return 'book.test method'
 
 """
-source指定的方法return内容就是序列化的内容
+source指定的方法的return内容就是序列化的内容
 """
 ```
 
-**结果示例**
+**输出示例**
 
 ```json
 {
@@ -1109,8 +1189,6 @@ source指定的方法return内容就是序列化的内容
     "publish_date": "book.test method",
 }
 ```
-
-
 
 ### 多对多关系字段
 
@@ -1137,7 +1215,7 @@ serializer通过字段取出多对多关系表数据：
 """
 ```
 
-**结果示例**
+**输出示例**
 
 ```python
 {
@@ -1158,11 +1236,362 @@ serializer通过字段取出多对多关系表数据：
 }
 ```
 
+# 请求与响应
+
+[MDN HTTP教程](https://developer.mozilla.org/zh-CN/docs/Web/HTTP)
+
+[django request-response](https://docs.djangoproject.com/zh-hans/3.1/ref/request-response/)
+
+## Request
+
+[drf-request](https://www.django-rest-framework.org/api-guide/requests/)
+
+[assert断言 补充](https://www.runoob.com/python3/python3-assert.html)
+
+```python
+# Rqeust类并没有继承django的
+# CBV源码有部分解析
+# 位置：from rest_framework.request import Request
+
+# Request部分关键源码
+class Request:
+    """
+    Wrapper allowing to enhance a standard `HttpRequest` instance.
+
+    Kwargs:
+        - request(HttpRequest). The original request instance.
+        - parsers(list/tuple). The parsers to use for parsing the
+          request content.
+        - authenticators(list/tuple). The authenticators used to try
+          authenticating the request's user.
+    """
+    def __init__(self, request, parsers=None, authenticators=None,
+                 negotiator=None, parser_context=None):
+        assert isinstance(request, HttpRequest), (
+            'The `request` argument must be an instance of '
+            '`django.http.HttpRequest`, not `{}.{}`.'
+            .format(request.__class__.__module__, request.__class__.__name__)
+        )
+        # 赋值django封装的request
+        self._request = request
+      
+    # 获取属性处理
+    def __getattr__(self, attr):
+        """
+        If an attribute does not exist on this instance, then we also attempt
+        to proxy it to the underlying HttpRequest object.
+        """
+        try:
+            return getattr(self._request, attr)
+        except AttributeError:
+            return self.__getattribute__(attr)
+        
+    # request.data
+    @property
+    def data(self):
+        if not _hasattr(self, '_full_data'):
+            self._load_data_and_files()
+        return self._full_data
+        
+# __getattribute__
+def __getattribute__(self, *args, **kwargs): # real signature unknown
+    """ Return getattr(self, name). """
+    pass
+```
+
+### **request.data** 
+
+**取POST请求数据**
+
+```python
+请求对象.data -> request.data
+前端以三种编码方式传入的数据 都可以取出来(结果可能是QueryDict 或 字典)
+```
+
+|            | django原生request(request.POST) | drf封装后的Request对象(request.data) |
+| ---------- | ------------------------------- | ------------------------------------ |
+| form       | 有数据 QueryDict                | 有数据 QueryDict                     |
+| urlencoded | 有数据 QueryDict                | 有数据 QueryDict                     |
+| json       | 无数据                          | 有数据 普通字典                      |
+
+### **requset.query_params**
+
+**取GET请求url中的数据**
+
+```python
+# drf Request类方法
+# self._request.GET = request.query_params
+# django原来取： request.GET
+# drf取： request.query_params
+
+@property
+def query_params(self):
+    return self._request.GET
+```
+
+## Response
+
+[drf-response](https://www.django-rest-framework.org/api-guide/responses/)
+
+```python
+# 位置：from rest_framework.response import Response
+
+class Response(SimpleTemplateResponse):
+    """
+    An HttpResponse that allows its data to be rendered into
+    arbitrary media types.
+    """
+    # 实例化参数
+    def __init__(self, data=None, status=None,
+                 template_name=None, headers=None,
+                 exception=False, content_type=None):
+        """
+        data: 响应数据 序列化器.data返回的字典 or 自定义返回字典内容
+        status: 响应状态码
+        template_name: drf默认提供的模板 可以修改(自定制)
+        headers: 响应头
+        exception: 异常处理
+        content_type: 响应中 Content-Type标头告诉客户端实际返回的内容的内容类型
+        """
+        pass
+    
+"""
+  RESTframework提供了一个响应类Response 使用该类构造响应对象时 响应的具体数据内容会被转换(render渲染)成符合前端需求的类型
+  
+  RESTframework提供了Renderer渲染器 用来根据请求头中的Accept(用户代理期望的MIME类型列表)来自动转换响应数据到对应格式 如果前端请求中未进行Accept声明 则会采用默认方式处理响应数据 我们可以通过配置来修改默认响应格式
+"""
+```
+
+**从修改默认响应渲染类看drf配置解析顺序**
+
+```python
+# 可以在rest_framework.settings查找所有的drf默认配置项
+DEFAULTS = {
+    # Base API policies
+    'DEFAULT_RENDERER_CLASSES': [  # 默认响应渲染类
+        'rest_framework.renderers.JSONRenderer',  # json渲染器
+        'rest_framework.renderers.BrowsableAPIRenderer',  # 浏览API渲染器
+    ]
+    ...
+}
+
+"""
+默认：浏览器响应成浏览器的格式 postman响应成json格式 - 通过配置实现
+可以修改：
+  1. 局部使用 - 对某个视图类有效
+  2. 全局使用 - 对全部视图类有效
+"""
+注意：drf有默认的配置文件 即rest_framework.settings 
+找的时候 先从项目的settings.py中找 -> 找不到采用自己默认的
 
 
+# 全局：django项目settings.py配置
+REST_FRAMEWORK = {  
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer', # 使浏览器访问也返回json数据
+    ]
+}
 
+# 局部：视图函数中修改(类属性)
+from rest_framework.renderers import JSONRenderer
 
-# 视图组件
+class TestView(APIView):
+    # 局部对视图类做配置(类属性)
+    renderer_classes = ['rest_framework.renderers.JSONRenderer']
+    def get(self, request):
+        return Response({'msg': 'ok'})
+    
+# 总结：drf的配置信息查找顺序(源码：面向对象属性解析顺序)
+先从自己类中找类属性配置 
+-> django项目的settings.py中的REST_FRAMEWORK = [] 命名空间配置
+-> drf自己的默认配置 rest_framework.settings
+```
+
+### 构造方式
+
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+class TestView(APIView):
+    def get(self, request):
+        print(request)
+        # 返回用了默认templates渲染 如果使用浏览器访问 需要注册rest_framework
+        # 否则浏览器会访问api.html 提示: TemplateDoesNotExist
+        return Response({'name': 'minho'},
+                        status=201,
+                        headers={'token': 'xxx'})
+```
+
+**响应示例**
+
+```json
+HTTP 201 Created
+Allow: GET, HEAD, OPTIONS
+Content-Type: application/json
+Vary: Accept
+token: xxx
+
+{
+    "name": "minho"
+}
+```
+
+**常用属性**
+
+```python
+1. Response().data
+传给response对象的序列化后 但尚未render处理的数据
+
+2. Response.status_code
+状态码的数字
+
+3. Response.content
+经过render处理后的响应数据
+```
+
+### 响应data
+
+```python
+"""
+响应内容：
+  data就是你要返回的数据 是一个字典
+  可以是Serializer序列化后的字典 也可以是自定义的字典
+"""
+```
+
+### 响应status
+
+```python
+"""
+响应状态码： 
+  直接使用status定义的状态码
+  它把所有使用到的状态码都定义成了常量 将数字对应了更明确的标识符
+  return Response({'name': 'minho'},
+                  status=status.HTTP_200_OK,
+                  headers={'token': 'xxx'})
+"""
+
+from rest_framework import status
+
+# status模块内容
+def is_informational(code):
+    return 100 <= code <= 199
+
+def is_success(code):
+    return 200 <= code <= 299
+
+def is_redirect(code):
+    return 300 <= code <= 399
+
+def is_client_error(code):
+    return 400 <= code <= 499
+
+def is_server_error(code):
+    return 500 <= code <= 599
+
+HTTP_100_CONTINUE = 100
+HTTP_101_SWITCHING_PROTOCOLS = 101
+HTTP_200_OK = 200
+HTTP_201_CREATED = 201
+HTTP_202_ACCEPTED = 202
+HTTP_203_NON_AUTHORITATIVE_INFORMATION = 203
+HTTP_204_NO_CONTENT = 204
+HTTP_205_RESET_CONTENT = 205
+HTTP_206_PARTIAL_CONTENT = 206
+HTTP_207_MULTI_STATUS = 207
+HTTP_208_ALREADY_REPORTED = 208
+HTTP_226_IM_USED = 226
+HTTP_300_MULTIPLE_CHOICES = 300
+HTTP_301_MOVED_PERMANENTLY = 301
+HTTP_302_FOUND = 302
+HTTP_303_SEE_OTHER = 303
+HTTP_304_NOT_MODIFIED = 304
+HTTP_305_USE_PROXY = 305
+HTTP_306_RESERVED = 306
+HTTP_307_TEMPORARY_REDIRECT = 307
+HTTP_308_PERMANENT_REDIRECT = 308
+HTTP_400_BAD_REQUEST = 400
+HTTP_401_UNAUTHORIZED = 401
+HTTP_402_PAYMENT_REQUIRED = 402
+HTTP_403_FORBIDDEN = 403
+HTTP_404_NOT_FOUND = 404
+HTTP_405_METHOD_NOT_ALLOWED = 405
+HTTP_406_NOT_ACCEPTABLE = 406
+HTTP_407_PROXY_AUTHENTICATION_REQUIRED = 407
+HTTP_408_REQUEST_TIMEOUT = 408
+HTTP_409_CONFLICT = 409
+HTTP_410_GONE = 410
+HTTP_411_LENGTH_REQUIRED = 411
+HTTP_412_PRECONDITION_FAILED = 412
+HTTP_413_REQUEST_ENTITY_TOO_LARGE = 413
+HTTP_414_REQUEST_URI_TOO_LONG = 414
+HTTP_415_UNSUPPORTED_MEDIA_TYPE = 415
+HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE = 416
+HTTP_417_EXPECTATION_FAILED = 417
+HTTP_418_IM_A_TEAPOT = 418
+HTTP_422_UNPROCESSABLE_ENTITY = 422
+HTTP_423_LOCKED = 423
+HTTP_424_FAILED_DEPENDENCY = 424
+HTTP_426_UPGRADE_REQUIRED = 426
+HTTP_428_PRECONDITION_REQUIRED = 428
+HTTP_429_TOO_MANY_REQUESTS = 429
+HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE = 431
+HTTP_451_UNAVAILABLE_FOR_LEGAL_REASONS = 451
+HTTP_500_INTERNAL_SERVER_ERROR = 500
+HTTP_501_NOT_IMPLEMENTED = 501
+HTTP_502_BAD_GATEWAY = 502
+HTTP_503_SERVICE_UNAVAILABLE = 503
+HTTP_504_GATEWAY_TIMEOUT = 504
+HTTP_505_HTTP_VERSION_NOT_SUPPORTED = 505
+HTTP_506_VARIANT_ALSO_NEGOTIATES = 506
+HTTP_507_INSUFFICIENT_STORAGE = 507
+HTTP_508_LOOP_DETECTED = 508
+HTTP_509_BANDWIDTH_LIMIT_EXCEEDED = 509
+HTTP_510_NOT_EXTENDED = 510
+HTTP_511_NETWORK_AUTHENTICATION_REQUIRED = 511
+```
+
+### 响应template_name
+
+```python
+"""
+响应模板名：
+  指定渲染的模板名字 可以自定义模板 基本用不到 了解即可
+"""
+```
+
+### 响应headers
+
+[MDN HTTP消息头详解](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers)
+
+```python
+"""
+响应头：
+  可以往响应头放东西 就是一个字典 具体headers字段及含义 参考上面链接  
+"""
+
+# Django设置头字段
+# 要设置或删除响应中的头字段 请像对待字典一样对待它
+>>> response = HttpResponse()
+>>> response['Age'] = 120
+>>> del response['Age']
+```
+
+### 响应content_type
+
+[MDN Content-Type ](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers/Content-Type)
+
+[Media Types](https://www.iana.org/assignments/media-types/media-types.xhtml)
+
+```python
+"""
+响应编码格式：
+  请求也有 实体头部用于指示资源的MIME类型 media type
+"""
+```
+
+# 视图
 
 ```python
 
