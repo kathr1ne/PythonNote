@@ -2169,6 +2169,147 @@ class BookModelViewSet(ModelViewSet):
     serializer_class = BookSerializer
 ```
 
+### ViewSetMixin源码分析
+
+```python
+"""
+ViewSetMixin重写了as_view方法 核心代码
+只要路由中配置了对应关系 比如 {'get': 'list', 'post': 'create'}
+当get请求过来 就会执行对象的list方法
+当post请求过来 就会执行对象的create方法
+  通过反射实现 把扩展Mixin类的 list create方法 拿过来赋值给当前ViewSet对象
+"""
+class ViewSetMixin:
+    """
+    This is the magic.
+
+    Overrides `.as_view()` so that it takes an `actions` keyword that performs
+    the binding of HTTP methods to actions on the Resource.
+
+    For example, to create a concrete view binding the 'GET' and 'POST' methods
+    to the 'list' and 'create' actions...
+
+    view = MyViewSet.as_view({'get': 'list', 'post': 'create'})
+    """
+
+    @classonlymethod
+    def as_view(cls, actions=None, **initkwargs):
+		...
+
+        def view(request, *args, **kwargs):
+            self = cls(**initkwargs)
+
+            if 'get' in actions and 'head' not in actions:
+                actions['head'] = actions['get']
+
+            # {'get': 'list', 'post': 'create'}
+            self.action_map = actions
+
+            # Bind methods to actions
+            # This is the bit that's different to a standard view
+            for method, action in actions.items():
+                # method: get | action: list
+                # 反射获取属性：执行完handler赋值 handler就变成了list(Mixin类写好的)的内存地址
+                handler = getattr(self, action)
+                # 反射设置属性：当前视图对象.get = list 
+                # 当get请求过来 CBV经过dispath分发 触发视图函数的.get方法
+                setattr(self, method, handler)
+                # for循环执行完毕 对象.get -> list 对象.post -> create
+
+            self.request = request
+            self.args = args
+            self.kwargs = kwargs
+
+            # And continue as usual
+            return self.dispatch(request, *args, **kwargs)
+		...
+        return csrf_exempt(view)
+```
+### 继承ViewSetMixin的视图类
+```python
+"""
+通过上面源码的分析 我们知道使用ViewSet的时候 as_view需要一个actions参数
+它会将请求方法(key)与你指定的执行函数(value)绑定
+那么 继承ViewSetMixin的视图类 我们就可以改写路由 以及改写CBV提供的get/post等的方法名称
+
+总结：继承ViewSetMixin视图类 配置好actions参数的映射关系 CBV方法名称可以任意
+"""
+urlpatterns = [
+    path('books/', views.BookModelViewSet.as_view(actions={'get': 'get_all_book'}))
+]
+
+# ViewSetMixin一定要放在APIView前面 
+# 多继承属性查找顺序 让as_view方法先找ViewSetMixin的
+class BookModelViewSet(ViewSetMixin, APIView):
+    def get_all_book(self, request):
+        books = Book.objects.all()
+        serializer = BookSerializer(books, many=True)
+        return Response(serializer.data)
+    
+# drf内置提供了这些继承ViewSetMixin视图类的子类
+```
+
+#### ViewSet
+
+```python
+# 继承APIview 就是上一步我们实现的
+class ViewSet(ViewSetMixin, views.APIView):
+    """
+    The base ViewSet class does not provide any actions by default.
+    """
+    pass
+```
+
+#### GenericViewSet
+
+```python
+# 继承GenericView 可以使用GenericView的各种方法
+class GenericViewSet(ViewSetMixin, generics.GenericAPIView):
+    """
+    The GenericViewSet class does not provide any actions by default,
+    but does include the base set of generic view behavior, such as
+    the `get_object` and `get_queryset` methods.
+    """
+    pass
+```
+
+#### ReadOnlyModelViewSet
+
+```python
+# 只读视图集 只提供获取所有数据 和获取单个数据的方法
+class ReadOnlyModelViewSet(mixins.RetrieveModelMixin,
+                           mixins.ListModelMixin,
+                           GenericViewSet):
+    """
+    A viewset that provides default `list()` and `retrieve()` actions.
+    """
+    pass
+```
+
+#### ModelViewSet
+
+```python
+# 前面使用的ModelViewSet 提供了5个接口的实现方法
+"""
+get    -  list/retrieve
+post   -  create
+put    -  update
+patch  -  partial_update
+delete -  destroy
+"""
+class ModelViewSet(mixins.CreateModelMixin,
+                   mixins.RetrieveModelMixin,
+                   mixins.UpdateModelMixin,
+                   mixins.DestroyModelMixin,
+                   mixins.ListModelMixin,
+                   GenericViewSet):
+    """
+    A viewset that provides default `create()`, `retrieve()`, `update()`,
+    `partial_update()`, `destroy()` and `list()` actions.
+    """
+    pass
+```
+
 
 
 # 解析器
