@@ -2419,6 +2419,13 @@ path('books/', views.BookViewSet.as_view(actions={'get': 'list', 'post': 'create
 ## Routers
 
 ```python
+对于视图集ViewSet 我们除了可以手动指明请求的方式与动作action之间的对应关系以外
+还可以使用Routers来帮助我们快速实现路由信息
+```
+
+**routers写法**
+
+```python
 # 继承自ModelViewSet的路由Routers写法
 
 # 1. 导入routers模块
