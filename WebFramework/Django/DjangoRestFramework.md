@@ -395,7 +395,7 @@ def dispatch(self, request, *args, **kwargs):
     
     # 现在视图函数拿到的request 已经不是django原生给我们封装的request
     # 而是drf自己定义的request对象(mro) 以后视图函数再使用的request对象 就是这个新的drf定义的对象
-    self.request = request
+    self.request = request  # 将新的request对象赋值给self.request 你视图函数里面 其他的方法 也可以从这个里面获取相关数据
     self.headers = self.default_response_headers  # deprecate?
 
     try:
@@ -435,6 +435,17 @@ def initialize_request(self, request, *args, **kwargs):
         negotiator=self.get_content_negotiator(),
         parser_context=parser_context
     ) 
+
+"""
+针对这个赋值：
+self.request = request  # 将新的request对象赋值给self.request 你视图函数里面 其他的方法 也可以从这个里面获取相关数据(就是drf封装的当次请求的request)
+
+class MyCBV(VPIView):
+	def get(self, request):
+	    ..
+	def foo(self):
+	    print(self.request)  # 视图函数中 其他方法 不用传参 也可以直接使用该对象     
+"""
 ```
 
 ### Request
@@ -1276,6 +1287,7 @@ class Request:
         self._request = request
       
     # 获取属性处理
+    # 如果自己没有的 问django原生封装的request要 这个时候是self._request
     def __getattr__(self, attr):
         """
         If an attribute does not exist on this instance, then we also attempt
@@ -1306,6 +1318,15 @@ def __getattribute__(self, *args, **kwargs): # real signature unknown
 ```python
 请求对象.data -> request.data
 前端以三种编码方式传入的数据 都可以取出来(结果可能是QueryDict 或 字典)
+
+"""
+实现：
+  from/urlencode 直接去取django原生封装的request取
+  json 去request.boby取出来 然后反序列化返回字典
+  
+  json模块是否支持反序列化bytes格式
+    3.6以后才支持 否则要decode成字符串在反序列化
+"""
 ```
 
 |            | django原生request(request.POST) | drf封装后的Request对象(request.data) |
@@ -1330,6 +1351,14 @@ def query_params(self):
 ```
 
 ## Response
+
+```python
+Response 是一个类
+要使用 就要实例化(需要传参)
+
+Response(data=None, status=None, template_name=None, 
+         headers=None, exception=False, conetnt_type=None)
+```
 
 [drf-response](https://www.django-rest-framework.org/api-guide/responses/)
 
@@ -1405,6 +1434,13 @@ class TestView(APIView):
 先从自己类中找类属性配置 
 -> django项目的settings.py中的REST_FRAMEWORK = [] 命名空间配置
 -> drf自己的默认配置 rest_framework.settings
+
+# django也有两套配置文件
+# settings.py | django.conf.global_settings.py
+思考：两套配置问价 如何 实现顺序的查找
+     - 类的继承可以实现 但是django这里不是 它是单个的模块
+     - django的实现：一个配置字典 先读取老的{key:value} 再读取新的{key:value}
+       字典特性：key不重复 新的key的value会覆盖老的
 ```
 
 ### 构造方式
@@ -1591,13 +1627,56 @@ HTTP_511_NETWORK_AUTHENTICATION_REQUIRED = 511
 """
 ```
 
-# 视图
+# 视图家族
 
 ## 两个视图基类
 
 ```python
 APIView         # 继承django View
-GenericAPIView  # 继承drf APIVIew
+
+GenericAPIView  # 继承drf APIVIew 做了一些扩展 重要的如下 看源码重点关注
+  类属性：
+    - queryset = None
+    - serializer_class = None
+  类方法：
+    - get_queryset()   常用
+    - get_object()     获取一条数据
+    - get_serializer() 常用
+    - get_setrializer_class() 内部来用 外部会重写(视图类中用到多个序列化器的时候)
+
+# get_object()源码解析
+class GenericAPIView(views.APIView):
+    ...
+    def get_object(self):
+        """
+        Returns the object the view is displaying.
+
+        You may want to override this if you need to provide non-standard
+        queryset lookups.  Eg if objects are referenced using multiple
+        keyword arguments in the url conf.
+        """
+        # 返回所有数据queryset对象 会有过滤
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # Perform the lookup filtering.
+        # lookup_field = 'pk'  
+        # lookup_url_kwarg = None
+        """
+        url路径 对应有名分组的名字 默认叫 pk 不对应则报错
+        如果需要修改：在自己的视图类 重写定义上面两个字段的其中一个
+        这里的lookup_url_kwarg 就是pk(默认) 
+        """
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+		
+        # {pk: 4} url有名分组 -> 关键字传参到对应的视图函数
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+        
+        # 根据pk=4 去queryset对象中get单个对象
+        obj = get_object_or_404(queryset, **filter_kwargs)
+        
+        # May raise a permission denied
+        self.check_object_permissions(self.request, obj)
+        return obj
 ```
 
 ### APIView
@@ -1775,7 +1854,7 @@ drf提供了5个视图扩展Mixin类 封装了上面的通用功能
 """
 ```
 
-## 五个扩展Mixin类
+## 五个视图扩展Mixin类
 
 ```python
 from rest_framework.mixins import *
@@ -2308,6 +2387,12 @@ class ModelViewSet(mixins.CreateModelMixin,
     `partial_update()`, `destroy()` and `list()` actions.
     """
     pass
+```
+
+# 路由
+
+```python
+
 ```
 
 
