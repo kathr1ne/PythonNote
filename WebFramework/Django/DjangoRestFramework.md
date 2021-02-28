@@ -2389,21 +2389,114 @@ class ModelViewSet(mixins.CreateModelMixin,
     pass
 ```
 
-# 路由
+# 路由Routers
+
+## 简单写法
+
+**在urls.py中配置**
+
+### **FBV**
 
 ```python
+path('publishs/<int:pk>/', views.detail)
+```
+
+### **CBV**
+
+```python
+path('publishs/<int:pk>/', views.PublishDetail.as_view())
+```
+
+### ViewSetMixin
+
+```python
+# 一旦视图类继承ViewSetMixin之后 写法稍有不同
+# as_view() 必须传入actions参数(位置或关键字传参)
+# ViewSetMixin重写as_view 比如get：通过反射取'list'函数 赋值给'get'
+path('books/', views.BookViewSet.as_view(actions={'get': 'list', 'post': 'create'}))
+```
+
+## Routers
+
+```python
+# 继承自ModelViewSet的路由Routers写法
+
+# 1. 导入routers模块
+from rest_framework import routers
+
+# 2. 该模块有两个类 实例化得到对象
+# routers.DefaultRouter() -> 生成的路由更多
+# routers.SimpleRouter() -> 生成两条路由
+# router = routers.SimpleRouter()
+router = routers.DefaultRouter()
+
+# 3. 注册
+# prefix: 路由前缀 不要加斜杠
+# viewset: 继承自ModelViewSet的视图类
+# basename: 别名 reverse反向解析使用
+# router.register(prefix, viewset, basename=None)
+router.register('books', views.BookViewSet)
+
+# 4. 将router.urls自动生成的路由加到原路由中
+urlpatterns += router.urls
 
 ```
 
-
-
-# 解析器
+### SimpleRouter和DefaultRouter
 
 ```python
+"""SimpleRouter 自动生成2条路由"""
+<URLPattern '^books/$' [name='book-list']>,
+<URLPattern '^books/(?P<pk>[^/.]+)/$' [name='book-detail']>
 
+
+"""DefaultRouter 自动生成6条路由"""
+# 这两条跟SimpleRouter一样
+<URLPattern '^books/$' [name='book-list']>, 
+<URLPattern '^books/(?P<pk>[^/.]+)/$' [name='book-detail']>, 
+
+# 下面两条有名分组：format关键字传参
+<URLPattern '^books\.(?P<format>[a-z0-9]+)/?$' [name='book-list']>,  # http://127.0.0.1:8000/books.json
+<URLPattern '^books/(?P<pk>[^/.]+)\.(?P<format>[a-z0-9]+)/?$' [name='book-detail']>,  # http://127.0.0.1:8000/books/5.json
+
+<URLPattern '^$' [name='api-root']>,   # 根路径会显示出所有可以访问的地址
+<URLPattern '^\.(?P<format>[a-z0-9]+)/?$' [name='api-root']>  # http://127.0.0.1:8000/books/books.api|.json
 ```
 
+## action使用
 
+```python
+# 作用：为了给继承自ModelViewSet的视图类中定义的函数也添加路由
+
+# 如何使用?
+from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.decorators import action
+
+from .models import Book
+from .serializers import BookSerializer
+
+class BookViewSet(ModelViewSet):
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+
+    """
+    action是一个带参装饰器
+    参数：methods -> 是一个列表 列表中放请求方式 methods=['GET', 'POST']
+    参数：detail -> 布尔类型 True/False 是否带pk
+      - True: ^books/(?P<pk>[^/.]+)/get_one/$ 生成带pk的地址
+      - False: ^books/get_one/ 生成不带pk的地址
+    当朝生成的地址发送methods里面支持的请求 会执行下面的函数
+    """
+    @action(methods=['GET', 'POST'], detail=True)
+    def get_one(self, request, pk):
+        print(pk)
+        # 截取1条
+        book = self.get_queryset()[:2]
+        # 虽然只取1条 但是结果仍然是可迭代对象 不是单个对象 仍需设置many=True
+        serializer = self.get_serializer(book, many=True)
+        return Response(serializer.data)
+```
 
 # 认证组件
 
