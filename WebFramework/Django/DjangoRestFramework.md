@@ -1762,18 +1762,127 @@ class BooksList(GenericAPIView):
   这一步写完之后 虽然比较法方便 但是你会发现具体方法的代码既然都一样(冗余度大) 
   每次都要拷贝同样的代码 只是替换不同的数据模型以及对应模型的序列化器
   那我们如果把这些方法通用的代码都封装为不同的Mixin类 然后CBV视图直接使用多继承的方式 岂不是更加方便和简介
+  
+
+"""
+drf提供了5个视图扩展Mixin类 封装了上面的通用功能
+后面使用 只需要多继承这些Mixin类 即可使用其封装好的方法
+  - 序列化所有数据 返回Response  self.list
+  - 序列化单个数据 返回Response  self.retrieve
+  - 反序列化一个数据(新增) 返回Response  self.create
+  - 反序列化一个数据(修改) 返回Response  self.update
+  - 删除一个数据 返回Response  self.destroy
+"""
 ```
 
-## 5个视图扩展Mixin类
+## 五个扩展Mixin类
 
 ```python
-# 5个Mixin子类
-from rest_framework.mixins import ListModelMixin      # def get(self, requst): pass
-from rest_framework.mixins import CreateModelMixin    # def post(self, request): pass
-from rest_framework.mixins import RetrieveModelMixin  # def get(self, request, pk): pass
-from rest_framework.mixins import UpdateModelMixin    # def put(self, request, pk): pass
-from rest_framework.mixins import DestroyModelMixin   # def delete(self, request, pk): pass
+from rest_framework.mixins import *
 ```
+
+### ListModelMixin
+
+```python
+class ListModelMixin:
+    """
+    List a queryset.
+    """
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+```
+
+### CreateModelMixin
+
+```python
+class CreateModelMixin:
+    """
+    Create a model instance.
+    """
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    def get_success_headers(self, data):
+        try:
+            return {'Location': str(data[api_settings.URL_FIELD_NAME])}
+        except (TypeError, KeyError):
+            return {}
+```
+
+### RetrieveModelMixin
+
+```python
+class RetrieveModelMixin:
+    """
+    Retrieve a model instance.
+    """
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+```
+
+###  UpdateModelMixin
+
+```python
+class UpdateModelMixin:
+    """
+    Update a model instance.
+    """
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        if getattr(instance, '_prefetched_objects_cache', None):
+            # If 'prefetch_related' has been applied to a queryset, we need to
+            # forcibly invalidate the prefetch cache on the instance.
+            instance._prefetched_objects_cache = {}
+
+        return Response(serializer.data)
+
+    def perform_update(self, serializer):
+        serializer.save()
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+```
+
+### DestroyModelMixin 
+
+```python
+class DestroyModelMixin:
+    """
+    Destroy a model instance.
+    """
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def perform_destroy(self, instance):
+        instance.delete()
+```
+
+### Mixin类使用
 
 **基于GenericAPIView和5个Mixin类重写书籍管理接口**
 
@@ -1808,7 +1917,7 @@ class BooksList(ListModelMixin, CreateModelMixin, GenericAPIView):
         return self.create(request)
 ```
 
-## 9个GenericAPIView视图子类
+## 九个通用视图子类
 
 ```python
 """
@@ -1816,36 +1925,248 @@ class BooksList(ListModelMixin, CreateModelMixin, GenericAPIView):
 drf还提供了更方便的继承方法(drf自己完成对应的Mixin和GenericView的继承 你只需要按需继承drf提供的新的类即可)
 """
 from rest_framework.generics import *
+```
 
+### CreateAPIView
+
+```python
 # 新增一个对象 POST
-class CreateAPIView(mixins.CreateModelMixin, GenericAPIView): pass
+class CreateAPIView(mixins.CreateModelMixin,
+                    GenericAPIView):
+    """
+    Concrete view for creating a model instance.
+    """
+    def post(self, request, *args, **kwargs):
+        return self.create(request, *args, **kwargs)
+```
 
+### ListAPIView
+
+```python
 # 返回所有对象 GET
-class ListAPIView(mixins.ListModelMixin, GenericAPIView): pass
+class ListAPIView(mixins.ListModelMixin,
+                  GenericAPIView):
+    """
+    Concrete view for listing a queryset.
+    """
+    def get(self, request, *args, **kwargs):
+        return self.list(request, *args, **kwargs)
+```
 
+### RetrieveAPIView
+
+```python
 # 返回一个对象 GET  retrieve: 取回
-class RetrieveAPIView(mixins.RetrieveModelMixin, GenericAPIView): pass
+class RetrieveAPIView(mixins.RetrieveModelMixin,
+                      GenericAPIView):
+    """
+    Concrete view for retrieving a model instance.
+    """
+    def get(self, request, *args, **kwargs):
+        return self.retrieve(request, *args, **kwargs)
+```
 
+### DestroyAPIView
+
+```python
 # 删除一个对象 DELETE
-class DestroyAPIView(mixins.DestroyModelMixin, GenericAPIView): pass
+class DestroyAPIView(mixins.DestroyModelMixin,
+                     GenericAPIView):
+    """
+    Concrete view for deleting a model instance.
+    """
+    def delete(self, request, *args, **kwargs):
+        return self.destroy(request, *args, **kwargs)
+```
 
+### UpdateAPIView
+
+```python
 # 更新一个对象 PUT/PATCH
-class UpdateAPIView(mixins.UpdateModelMixin, GenericAPIView): pass
+class UpdateAPIView(mixins.UpdateModelMixin,
+                    GenericAPIView):
+    """
+    Concrete view for updating a model instance.
+    """
+    def put(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
 
+    def patch(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
+```
+
+### ListCreateAPIView
+
+```python
 # List 返回所有对象|新增一个对象
-class ListCreateAPIView(mixins.ListModelMixin, mixins.CreateModelMixin, GenericAPIView): pass
+class ListCreateAPIView(mixins.ListModelMixin,
+                        mixins.CreateModelMixin,
+                        GenericAPIView):
+    """
+    Concrete view for listing a queryset or creating a model instance.
+    """
+    def get(self, request, *args, **kwargs):
+        return self.list(request, *args, **kwargs)
 
+    def post(self, request, *args, **kwargs):
+        return self.create(request, *args, **kwargs)
+```
+
+### RetrieveUpdateAPIView
+
+```python
 # 限制删除单个对象 返回一个对象|更新一个对象
-class RetrieveUpdateAPIView(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, GenericAPIView): pass
+class RetrieveUpdateAPIView(mixins.RetrieveModelMixin,
+                            mixins.UpdateModelMixin,
+                            GenericAPIView):
+    """
+    Concrete view for retrieving, updating a model instance.
+    """
+    def get(self, request, *args, **kwargs):
+        return self.retrieve(request, *args, **kwargs)
 
+    def put(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def patch(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
+```
+
+### RetrieveDestroyAPIView
+
+```python
 # 限制更新单个对象 返回一个对象|删除一个对象
-class RetrieveDestroyAPIView(mixins.RetrieveModelMixin, mixins.DestroyModelMixin, GenericAPIView): pass
+class RetrieveDestroyAPIView(mixins.RetrieveModelMixin,
+                             mixins.DestroyModelMixin,
+                             GenericAPIView):
+    """
+    Concrete view for retrieving or deleting a model instance.
+    """
+    def get(self, request, *args, **kwargs):
+        return self.retrieve(request, *args, **kwargs)
 
+    def delete(self, request, *args, **kwargs):
+        return self.destroy(request, *args, **kwargs)
+```
+
+### RetrieveUpdateDestroyAPIView
+
+```python
 # Detail 返回一个对象|更新一个对象|删除一个对象
-class RetrieveUpdateDestroyAPIView(mixins.RetrieveModelMixin, 
+class RetrieveUpdateDestroyAPIView(mixins.RetrieveModelMixin,
                                    mixins.UpdateModelMixin,
-                                   mixins.DestroyModelMixin, 
-                                   GenericAPIView): pass
+                                   mixins.DestroyModelMixin,
+                                   GenericAPIView):
+    """
+    Concrete view for retrieving, updating or deleting a model instance.
+    """
+    def get(self, request, *args, **kwargs):
+        return self.retrieve(request, *args, **kwargs)
+
+    def put(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def patch(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
+
+    def delete(self, request, *args, **kwargs):
+        return self.destroy(request, *args, **kwargs)
+```
+
+### 通用视图子类使用
+
+**根据接口需求继承这9个视图子类重写接口**
+
+```python
+"""
+这9个视图子类 都继承于GenericAPIView 然后根据不同的接口需求混入实现不同功能的Mixin类 并且实现对应的 get/post/put/patch/delete 方法 我们只需要根据我们接口需求 继承上面这9个视图子类的其中一个或几个即可 
+然后仅仅只需提供GenericAPIView视图需要的 queryset 和 serializer_class 两个类属性即可十分简洁的完成接口的书写
+"""
+
+# 使用9个视图子类中的其中2个重写5个书籍管理接口
+from rest_framework.generics import ListCreateAPIView
+from rest_framework.generics import RetrieveUpdateDestroyAPIView
+from .models import Book
+from .serializers import BookSerializer
+
+class BooksDetail(RetrieveUpdateDestroyAPIView):
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+
+class BooksList(ListCreateAPIView):
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+    
+"""
+-> 发起请求 
+-> 路由匹配 
+-> CBV视图函数 
+-> as_view()执行返回view函数地址
+-> view函数执行dispath方法 完成请求分发 
+-> dispath方法把此次请求的方法名转换为小写(request.method -> GET -> get -> getattr(self, get))
+-> 通过反射getattr获取CBV视图函数的对应方法名称
+-> 执行该方法
+
+这个时候 我们继承的这9个视图子类 已经封装好了对应请求的方法
+根据实例属性方法的查找是顺序 比如GET请求过来(request.method = GET)：
+-> 自己写的CBV视图类找对应的get方法
+-> 没有找到(这个时候不用再自己提供这些方法) 
+-> 往父类查找
+-> 最终会在这9个视图子类找到对应封装的get方法执行
+-> 通用视图子类执行自己的get方法
+-> 然后调用Mixin类封装的方法序列化/反序列化数据 并返回响应
+"""
+```
+
+## 视图集ViewSet
+
+```python
+"""
+使用上面通用视图子类 已经非常简洁的实现了5个接口
+但是我们使用了2个CBV 而且对应的类属性都是一样的(queryset和serializer_calss)
+
+我们是否可以直接合成一个?
+问题：合成一个的问题在于 这两个CBV分别都有一个get方法
+     - 一个get 是获取所有数据
+     - 另一个get 是获取单个数据
+如果能解决这个问题 那么就可以合并
+如何解决?
+"""
+```
+
+### ModelViewSet
+
+**使用ModelViewSet编写5个接口 需要注意路由的变化**
+
+```python
+# urls.py
+"""
+注意路由变化 使用ViewSet actions参数必须传入
+简单看下源码发现 此时的as_view方法 已经被ViewSetMixin类重写 
+
+解决同一个get请求需要对应执行不同方法的问题
+  - 获取所有数据 {'get': 'list'}
+  - 获取单个数据 {'get': 'retrieve'}
+"""
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    # 使用ViewSet actions参数必须传 是一个字典 {请求小写: 执行的方法名}
+    # 当路径匹配上 并且是get请求 会执行BookModelViewSet类的list方法 其余同理
+    path('books/', views.BookModelViewSet.as_view(actions={'get': 'list', 'post': 'create'})),
+    path('books/<int:pk>/', views.BookModelViewSet.as_view(actions={'get': 'retrieve', 'put': 'update', 'delete': 'destroy'})),
+]
+
+# views.py
+"""合并BookList CBV 和BookDetail CBV"""
+from rest_framework.viewsets import ModelViewSet
+from .models import Book
+from .serializers import BookSerializer
+
+class BookModelViewSet(ModelViewSet):
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
 ```
 
 
