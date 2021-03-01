@@ -3429,6 +3429,61 @@ return APIResponse(code=0, msg='error', result=ret.data)
 """
 ```
 
+# 书籍管理接口详细
+
+```python
+from django.db import models
+
+
+class BaseModel(models.Model):
+    is_delete = models.BooleanField(default=False)
+    # auto_now_add=True 只要记录创建 不需要手动插入时间 自动把当前时间插入
+    create_time = models.DateTimeField(auto_now_add=True)
+    # auto_now=True 只要更新 就会把当前时间插入
+    last_update_time = models.DateTimeField(auto_now=True)
+    # import datetime
+    # datetime.datetime.now一定不要加()执行 否则时间都是项目创建的时间
+    # create_time = models.DateTimeField(default=datetime.datetime.now)
+
+    class Meta:
+        # 单个字段有索引:db_index=True 有唯一:unique=True 直接配在字段参数中
+        # 多个字段 有联合索引:index_together 联合唯一:unique_together
+        abstract = True  # 抽象表 不在数据库中建立表
+
+
+class Book(BaseModel):
+    name = models.CharField(max_length=32)
+    price = models.DecimalField(max_digits=8, decimal_places=2)
+    # 一对多的关系一但确立 关联字段写在多的一方
+    # to_field 默认不屑 关联到主键
+    publish = models.ForeignKey(to='Publish', on_delete=models.CASCADE)
+
+
+"""
+models.CASCADE
+models.DO_NOTHING
+models.PROTECT
+models.SET_NULL
+models.SET_DEFAULT
+"""
+
+
+class Publish(BaseModel):
+    name = models.CharField(max_length=32)
+    addr = models.CharField(max_length=32)
+
+
+class Author(BaseModel):
+    name = models.CharField(max_length=32)
+    gender = models.IntegerField(choices=((1, '男'), (2, '女'), (3, '其他')))
+
+
+class AuthorDetail(BaseModel):
+    models = models.CharField(max_length=11)
+```
+
+
+
 # 分页器
 
 # 文档生成
