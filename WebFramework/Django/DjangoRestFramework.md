@@ -2541,9 +2541,9 @@ drf认证得实现：
 -> dispath方法 
 -> self.initial(request, *args, **kwargs)
 -> self.initial里面包含：
-   - 认证 self.perform_authentication(request)
-   - 权限 self.perform_authentication(request)
-   - 频率 self.perform_authentication(request)
+   - 认证 self.perform_authentication(request)  # 认证组件
+   - 权限 self.check_permissions(request)
+   - 频率 self.check_throttles(request)
 """
    
 # 读：self.perform_authentication(request)
@@ -2735,7 +2735,203 @@ class LoginView(APIView):
     authentication_classes = []  # 局部禁用认证 置为空列表实现
 ```
 
+## 自带认证类
+
+### BasicAuthentication
+
+```python
+# 针对用户名/密码的HTTP基本身份验证
+class BasicAuthentication(BaseAuthentication): pass
+    """
+    HTTP Basic authentication against username/password.
+    ""
+```
+
+### RemoteUserAuthentication
+
+```python
+class RemoteUserAuthentication(BaseAuthentication): pass
+    """
+    REMOTE_USER authentication.
+
+    To use this, set up your web server to perform authentication, which will
+    set the REMOTE_USER environment variable. You will need to have
+    'django.contrib.auth.backends.RemoteUserBackend in your
+    AUTHENTICATION_BACKENDS setting
+    """
+```
+
+### SessionAuthentication
+
+```python
+class SessionAuthentication(BaseAuthentication): pass
+	"""
+	Use Django's session framework for authentication.	
+	"""
+```
+
+### TokenAuthentication
+
+```python
+class TokenAuthentication(BaseAuthentication): pass
+	"""
+	Simple token based authentication.
+
+	Clients should authenticate by passing the token key in the "Authorization"
+	HTTP header, prepended with the string "Token ".  For example:
+
+	Authorization: Token 401f7ac837da42b97f613d789819ff93537bee6a
+    """
+```
+
+
+
 # 权限组件
+
+```python
+"""
+-> APIView 
+-> dispath方法 
+-> self.initial(request, *args, **kwargs)
+-> self.initial里面包含：
+   - 认证 self.perform_authentication(request)
+   - 权限 self.check_permissions(request)   # 权限组件 在APIView里面 比认证简单一些 而且在认证之后执行 可以拿到request.user
+   - 频率 self.check_throttles(request)
+"""
+
+权限需要和认证配合使用 给认证的用户 分配不同的权限
+```
+
+## 权限源码分析
+
+```python
+class APIView(View):
+    def check_permissions(self, request):
+        """
+        Check if the request should be permitted.
+        Raises an appropriate exception if the request is not permitted.
+        """
+        for permission in self.get_permissions():  # 权限类的对象 放到列表中
+            # 执行权限类的has_permission方法
+            # 从原理这里的判断可以看出 返回值应该是 True/False
+            # 权限通过：True  不通过：False
+            # 在认证之后执行 可以拿到request.user
+            if not permission.has_permission(request, self):
+                self.permission_denied(
+                    request,
+                    message=getattr(permission, 'message', None),
+                    code=getattr(permission, 'code', None)
+                )    
+```
+
+## 自定义权限类
+
+- **编写**
+
+```python
+"""
+1. 继承BasePermission
+2. 重写has_permission
+   2.1 返回True: 有权限
+   2.2 返回Flase: 无权限
+"""
+from rest_framework.permissions import BasePermission
+
+class UserPermission(BasePermission):
+    # request drf的request对象
+    # view 自己写的视图类对象 也有view.request 可以操作更多属性
+    def has_permission(self, request, view):
+		"""
+		实现：不是超级用户 不能访问
+        由于已经认证过 request.user可以直接取到当前登录用户
+        if request.user.user_type == 1:
+            return True
+        return False
+        如果该字段使用了choice 通过get_字段名_display()就能取出后面的备注信息
+        print(request.user.get_user_type_display())
+		"""
+        return True if request.user.user_type == 1 else False
+```
+
+- **使用**
+
+```python
+from .serializers import BookSerializer
+from .models import Book
+from .authentication import MyAuthentication
+from .authentication import UserPermission
+
+class BookViewSet(ModelViewSet):
+    authentication_classes = [MyAuthentication]
+    permission_classes = [UserPermission]  # 视图类里面局部使用
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+    
+# 全局使用 settings.py
+REST_FRAMEWORK = {
+        "DEFAULT_AUTHENTICATION_CLASSES": ['app01.authentication.MyAuthentication'],
+        'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
+}
+
+# 全局使用之后 部分视图需要局部禁用
+permission_classes = []
+```
+
+**输出示例**
+
+```json
+{
+    "detail": "You do not have permission to perform this action."
+}
+```
+
+## 自带权限类
+
+### IsAdminUser
+
+```python
+# 使用django的Auth模块
+class IsAdminUser(BasePermission):
+    """
+    Allows access only to admin users.
+    """
+    
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_staff)
+```
+
+### IsAuthenticated
+
+```python
+class IsAuthenticated(BasePermission):
+    """
+    Allows access only to authenticated users.
+    """
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated)
+```
+
+### IsAuthenticatedOrReadOnly
+
+```python
+class IsAuthenticatedOrReadOnly(BasePermission):
+    """
+    The request is authenticated as a user, or is a read-only request.
+    """
+
+    def has_permission(self, request, view):
+        return bool(
+            request.method in SAFE_METHODS or
+            request.user and
+            request.user.is_authenticated
+        )
+
+```
+
+**其余自带权限类参考drf.permissions模块**
+
+# 频率组件
 
 ```python
 
@@ -2743,10 +2939,19 @@ class LoginView(APIView):
 
 
 
-# 频率组件
+# 解析组件
 
 ```python
+from rest_framework.parsers import *
 
+# 看下对应解析器源码即可
+
+# 默认配置如下
+'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser'
+]
 ```
 
 
