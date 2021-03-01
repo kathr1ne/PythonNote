@@ -448,7 +448,7 @@ class MyCBV(VPIView):
 """
 ```
 
-### Request
+- **Request**
 
 ```python
 """
@@ -2332,6 +2332,7 @@ class BookModelViewSet(ViewSetMixin, APIView):
 
 ```python
 # 继承APIview 就是上一步我们实现的
+# 没有提供任何actions方法 需要我们写的代码是最多的
 class ViewSet(ViewSetMixin, views.APIView):
     """
     The base ViewSet class does not provide any actions by default.
@@ -2343,6 +2344,7 @@ class ViewSet(ViewSetMixin, views.APIView):
 
 ```python
 # 继承GenericView 可以使用GenericView的各种方法
+# 涉及到序列化/数据库操作 尽量使用GenericView 方便
 class GenericViewSet(ViewSetMixin, generics.GenericAPIView):
     """
     The GenericViewSet class does not provide any actions by default,
@@ -2445,8 +2447,8 @@ router = routers.DefaultRouter()
 router.register('books', views.BookViewSet)
 
 # 4. 将router.urls自动生成的路由加到原路由中
-urlpatterns += router.urls
-
+     4.1 urlpatterns += router.urls
+     4.2 urlpatterns = [path('', include(router.urls))]
 ```
 
 ### SimpleRouter和DefaultRouter
@@ -2473,7 +2475,7 @@ urlpatterns += router.urls
 ## action使用
 
 ```python
-# 作用：为了给继承自ModelViewSet的视图类中定义的函数也添加路由
+# 作用：为了给继承自ModelViewSet的视图类中自定义的方法自动生成路由
 
 # 如何使用?
 from rest_framework.response import Response
@@ -2507,11 +2509,231 @@ class BookViewSet(ModelViewSet):
 
 # 认证组件
 
-```python
+[Authentication](https://www.django-rest-framework.org/api-guide/authentication/)
 
+## 认证类的写法
+
+```python
+"""
+drf认证得实现：
+  1. 写一个类 继承BaseAuthentication
+     注：不继承也可以 只要实现authenticate方法即可 它只是规定了子类的行为 不用一定继承它
+  2. 重写authenticate方法(实现认证得逻辑) 因为源码中 调用的时候 需要执行认证类的该方法
+     2.1 认证通过 返回两个值(self.user self.auth) 
+         - self.user最终给request.user 当前登录用户
+         - self.auth
+     2.2 认证失败 抛异常：AuthenticationFailed(推荐这个) or APIException
+     
+  3. 使用
+     3.1 全局使用 settings.py配置
+     3.2 局部使用 视图类写类属性
+     
+     看源码知道 全局或者局部配置的属性名字为 如：authentication_classes = [SessionAuthentication, BasicAuthentication]
+     需要是一个可迭代对象 可以配置多个 按顺序执行 类似配置认证装饰器
+"""
 ```
 
+## 认证源码分析
 
+```python
+"""
+-> APIView 
+-> dispath方法 
+-> self.initial(request, *args, **kwargs)
+-> self.initial里面包含：
+   - 认证 self.perform_authentication(request)
+   - 权限 self.perform_authentication(request)
+   - 频率 self.perform_authentication(request)
+"""
+   
+# 读：self.perform_authentication(request)
+class APIView(View):
+     authentication_classes = api_settings.DEFAULT_AUTHENTICATION_CLASSES
+        
+    def initialize_request(self, request, *args, **kwargs):
+        # 实例化Request类 传入authenticators认证器  
+        return Request(
+            request,
+            parsers=self.get_parsers(),
+            # 是一个列表 [认证类的对象, 认证类的对象, ...]
+            authenticators=self.get_authenticators(),
+            negotiator=self.get_content_negotiator(),
+            parser_context=parser_context
+        )
+    
+    def get_authenticators(self):
+        # 列表解析式 去自己的authentication_classes(可迭代对象)取auth 然后直接auth() 执行
+        # 这里authentication_classes是一个APIView的类属性 取的默认配置
+        # 列表中是一堆对象(认证类实例) 视图类中配置的authentication_classes = [类名]
+        return [auth() for auth in self.authentication_classes]   
+    
+	def initial(self, request, *args, **kwargs):
+        self.perform_authentication(request)
+        self.check_permissions(request)
+        self.check_throttles(request)
+	
+    def perform_authentication(self, request):
+        # 就一句话 需要去drf的Request类中查找user属性(方法)
+        # 进源码看 实际是一个方法 用@property包装成了一个属性
+        request.user
+        
+class Request:
+    @property
+    def user(self):
+        if not hasattr(self, '_user'):
+            with wrap_attributeerrors():  # 上下文管理
+                # 刚开始来 没有_user 走self._authenticate
+                self._authenticate()  # 核心
+        # 有用户 直接返回用户
+        return self._user
+    
+    # 做认证 核心
+    def _authenticate(self):
+        # self.authenticators Request类实例化(APIView的dispath的时候实例化的)的时候传入的参数
+        # 这个参数的类型：是配置的一堆认证类产生的认证类对象组成的list
+        # 遍历拿到一个个认证器(认证类的实例化后得到的对象) 进行认证
+        for authenticator in self.authenticators:
+            try:
+                # 认证器(对象)调用authenticate(认证类对象(认证类自动注入的self), request请求对象) 所以自定义类实现该方法的时候 需要一个形参接收该self(request请求对象)
+                # 返回值：登录用户与认证的信息组成的tuple
+                # try语句 认证失败抛出异常
+                user_auth_tuple = authenticator.authenticate(self)  # 这里的self是request请求对象
+            except exceptions.APIException:
+                self._not_authenticated()
+                raise
+			
+            # 返回值的处理
+            if user_auth_tuple is not None:
+                self._authenticator = authenticator
+                # 如果有返回值 将 登录用户 与 登录认证 分别保存到 request.user request.auth
+                self.user, self.auth = user_auth_tuple
+                return
+		# 如果返回值user_auth_tuple为空 代表认证通过
+        # 但是没有登录用户与登录信息 代表匿名用户(游客)
+        self._not_authenticated()
+```
+
+## 自定义认证类
+
+### 简单登录实现
+
+```python
+测试简单存了一个token值到服务端数据库 仅为测试方便类似session
+```
+
+- **认证测试模型**
+
+```python
+from django.db import models
+
+class User(models.Model):
+    username = models.CharField(max_length=32)
+    password = models.CharField(max_length=256)
+    user_type = models.IntegerField(choices=((1, '超级用户'), (2, '普通用户'), (3, '二笔用户')))
+    age = models.IntegerField()
+    register_time = models.DateField()
+    gender_choices = [(1, '男'), (2, '女'), (3, '其他')]
+    gender = models.IntegerField(choices=gender_choices)
+
+class UserToken(models.Model):
+    """垂直分表(库)|水平分表(库)"""
+    token = models.CharField(max_length=64)
+    # 一对一关联到User表 一对一：就是垂直分表
+    user = models.OneToOneField(to='User', on_delete=models.CASCADE)
+```
+
+- **认证视图函数**
+
+```python
+import uuid
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from . import models
+
+class LoginView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        user = models.User.objects.filter(username=username, password=password).first()
+        if user:
+            # 登录成功 生成一个随机字符串
+            token = uuid.uuid4()
+            # 存到UserToken表中
+            # models.UserToken.objects.create(token=token, user=user)  # 这种方式每次登录都会记录一条 不好 有记录 更新即可
+            # update_or_create 没有就新增 有就更新
+            models.UserToken.objects.update_or_create(defaults={'token': token}, user=user)
+            return Response({'status': 100, 'msg': '登录成功', 'token': token})
+        return Response({'status': 101, 'msg': '用户名或密码错误'})
+```
+
+### 实现自定义认证类
+
+- **编写自定义认证类**
+
+```python
+from rest_framework.authentication import BaseAuthentication
+from rest_framework.exceptions import AuthenticationFailed
+from .models import UserToken
+from django.db import models
+
+"""
+访问URL 需要写法token参数：
+127.0.0.1:8000/books/?token=147f71b0-7665-4a06-a178-24fbe98c9332
+"""
+class MyAuthentication(BaseAuthentication):
+    def authenticate(self, request):
+        # 认证逻辑
+        # 如果认证通过 返回元组(user, auth)
+        token = request.query_params.get('token')
+        if token:
+            try:
+                user_token = UserToken.objects.get(token=token)
+                # 这里返回(user对象, token) 不一定返回user对象
+                # 可以返回字符串(user_token.user.username)或其他 返回对象 后面方便request.user使用
+                return user_token.user, token
+            except models.ObjectDoesNotExist:
+                # 如果认证失败 抛出AuthenticationFailed异常
+                raise AuthenticationFailed('认证失败')
+        raise AuthenticationFailed('请求地址中需要携带token')
+```
+
+- **使用自定义认证类**
+
+```python
+class BookViewSet(ModelViewSet):
+    authentication_classes = [MyAuthentication]  # 局部配置
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+
+    @action(methods=['get'], detail=False)
+    def get_one(self, request):
+        print(request.user)  # user - minho
+        print(request.auth)  # token - 147f71b0-7665-4a06-a178-24fbe98c9332 
+        book = self.get_queryset()[:1]
+        serializer = BookSerializer(book, many=True)
+        return Response(serializer.data)
+    
+    
+# 全局配置 settings.py
+# 可以有多个 顺序执行配置的认证类
+"""
+需要注意：如果配置多个认证类 要把返回两个值的放到最后
+        因为request.user request.auth会一直重复覆盖
+"""
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": ['app01.authentication.MyAuthentication']
+}
+
+"""
+全局配置这里有一个问题：
+  全局配置后 所有视图都会进行认证 包括登录视图
+  还没登录就进行认证... 
+  
+  这里需要对登录视图做局部配置 登录视图不需要任何认证
+"""
+class LoginView(APIView):
+    authentication_classes = []  # 局部禁用认证 置为空列表实现
+```
 
 # 权限组件
 
