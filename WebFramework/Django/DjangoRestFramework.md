@@ -1627,6 +1627,32 @@ HTTP_511_NETWORK_AUTHENTICATION_REQUIRED = 511
 """
 ```
 
+## 封装Response对象
+
+```python
+# 自己封装Response对象
+from rest_framework.response import Response
+
+class APIResponse(Response):
+    def __init__(
+            self,
+            code=100,
+            msg='success',
+            result=None,
+            status=None,
+            headers=None,
+            **kwargs):
+        dic = {'code': code, 'msg': msg}
+        if data:
+            dic['result'] = result
+        dic.update(kwargs)
+        # super() 对象来调用对应的绑定方法 会自动注入self
+        super().__init__(data=dic, status=status, headers=headers)
+        
+        # 类来调用对象的绑定方法 这个方法就是一个普通函数 有几个参数传几个参数
+        # Response.__init__(data=dic, status=status, headers=headers)
+```
+
 # 视图家族
 
 ## 两个视图基类
@@ -3388,33 +3414,26 @@ def my_exception_handler(exc, context):
       2. Response对象
     """
     if not response:
-        return Response(data={'status': 999, 'msg': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(data={'status': 0, 'msg': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     # return response
-    return Response(data={'status':888, 'mgs': response.data.get('detail')}, status=response.status_code)
+    return Response(data={'status':0, 'msg': response.data.get('detail')}, status=response.status_code)
 
 """
 如果需要分得更细 再去捕获判断：
 if isinstance(exc, ZeroDivisionError):
 	pass
+	
+# 替换为自定义响应对象
+return APIResponse(code=0, msg='error', result=str(exc))
+return APIResponse(code=0, msg='error', result=ret.data)
 """
-
 ```
 
+# 分页器
+
+# 文档生成
+
+# JWT认证
 
 
-
-
-# 分页器 响应器
-
-```python
-
-```
-
-
-
-# url控制器 版本控制
-
-```python
-
-```
 
