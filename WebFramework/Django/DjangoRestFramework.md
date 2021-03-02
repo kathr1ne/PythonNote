@@ -3431,6 +3431,8 @@ return APIResponse(code=0, msg='error', result=ret.data)
 
 # 书籍管理接口详细
 
+## 模型类
+
 ```python
 from django.db import models
 
@@ -3450,36 +3452,281 @@ class BaseModel(models.Model):
         # 多个字段 有联合索引:index_together 联合唯一:unique_together
         abstract = True  # 抽象表 不在数据库中建立表
 
-
+        
 class Book(BaseModel):
-    name = models.CharField(max_length=32)
+    # help_text admin管理后台的网页提示
+    name = models.CharField(max_length=32, verbose_name='书名', help_text='这里填书名')
     price = models.DecimalField(max_digits=8, decimal_places=2)
     # 一对多的关系一但确立 关联字段写在多的一方
     # to_field 默认不屑 关联到主键
-    publish = models.ForeignKey(to='Publish', on_delete=models.CASCADE)
+    # db_constraint=False 控制是否应该在数据库中为这个外键创建一个约束 默认值是True
+    publish = models.ForeignKey(to='Publish', on_delete=models.DO_NOTHING, db_constraint=False)
 
+    # 对对多 跟作者 关联字段写在查询次数多的一方
+    # 三种创建方式 根据实际选取选择
+    # 第三张表 只有关联字段 用自动创建
+    # 第三张表 有扩展字段 需要手动写
+    authors = models.ManyToManyField(to='Author', db_constraint=False)
+    class Meta:
+        verbose_name_plural = '书籍'  # admin中显示
 
-"""
-models.CASCADE
-models.DO_NOTHING
-models.PROTECT
-models.SET_NULL
-models.SET_DEFAULT
-"""
+    def __str__(self):
+        return self.name
 
+    @property
+    def publish_name(self):
+        return self.publish.name
+
+    def author_list(self):
+        return [{'name': author.name, 'gender': author.get_gender_display()} for author in self.authors.all()]
+    
 
 class Publish(BaseModel):
     name = models.CharField(max_length=32)
     addr = models.CharField(max_length=32)
 
+    def __str__(self):
+        return self.name
+    
 
 class Author(BaseModel):
     name = models.CharField(max_length=32)
     gender = models.IntegerField(choices=((1, '男'), (2, '女'), (3, '其他')))
+    # 一对一关系 写在查询频率高的以方
+    # OneToOneField的本质就是ForeignKey+unique=True
+    authordetail = models.OneToOneField(to='AuthorDetail', db_constraint=False, on_delete=models.CASCADE)
 
-
+    
 class AuthorDetail(BaseModel):
     models = models.CharField(max_length=11)
+
+
+"""
+# on_delete
+models.CASCADE
+  删除关联数据 与之关联也删除
+models.DO_NOTHING
+  删除关联数据 引发错误IntegrityError
+  不采取任何行动 如果你的数据库后端强制执行引用完整性 这将导致一个 IntegrityError
+models.PROTECT
+  删除关联数据 引发错误ProtectedError
+models.SET_NULL
+  删除关联数据 与之关联的值设置null(前提是FK字段需要设置可为空)
+models.SET_DEFAULT
+  删除关联数据 与之关联的值设置为默认值(前提FK字段需要设置默认值)
+models.SET
+  删除关联数据
+  1. 与之关联的值设置为指定值 设置：models.SET(值)
+  2. 与之关联的值设置为可执行对象的返回值 设置：models.SET(可执行对象)
+  
+  
+# 表断关联
+  1. 表之间没有外键关联 但是有外键逻辑关联(有外键字段 没有设置约束) db_constraint
+  2. 断关联后不会影响数据库查询效率 但是会极大的提高数据库增删改效率(不影响增删改查操作)
+  3. 断关联一定要通过逻辑保证表之间数据的安全 不要出现脏数据(代码控制)
+  4. 断关联
+  5. 级联关系
+     作者没了 详情也没：on_delete=models.CASCADE
+     出版社没了 书还是哪个出版社出版：on_delete=models.DO_NOTHING
+     部门没了 员工没有部门(空部门)：null=True, on_delete=models.SET_NULL
+     部门没了 员工进入默认部门(默认值)：default=0, on_delete=models.SET_DEFAULT
+"""
+```
+
+## CBV视图
+
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from . import models
+from . import serializers
+
+
+class BookAPIView(APIView):
+    def get(self, request, *args, **kwargs):
+        # 查所有
+        books = models.Book.objects.all().filter(is_delete=False)
+        serializer = serializers.BookModelSerializer(books, many=True)
+        return Response(serializer.data)
+        # 查一个 取pk实现
+
+    def post(self, request, *args, **kwargs):
+        """具备增单条 和增多条的功能"""
+        if isinstance(request.data, dict):
+            # 增单条
+            serializer = serializers.BookModelSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+        elif isinstance(request.data, list):
+            # 增多条 现在serializer类型为：ListSerialzer
+            serializer = serializers.BookModelSerializer(data=request.data, many=True)
+            print(type(serializer))
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            """
+            新增 -> ListSerializer.save() -> create()
+            def create(self, validated_data):
+                return [self.child.create(attrs) for attrs in validated_data]
+            增多条：循环新增
+            self.child: BookModelSerialzer
+            """
+            return Response(serializer.data)
+
+    def put(self, request, *args, **kwargs):
+        # 改一个
+        if kwargs.get('pk', None):
+            book = models.Book.objects.filter(pk=kwargs.get('pk')).first()
+            # partial=True允许局部更新
+            serializer = serializers.BookModelSerializer(book, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+        else:
+            # 修改多个 需要新建一个BookListSerializer 并重写 update()方法
+            # 规定数据格式：request.data: [{id:1, name=xx, price:xxx}, {id:2, name=xx, price:xxx},]
+            # 处理传入的数据：对象列表[book1, book2] 修改的数据列表：[{name:xx,price:xx}, {}]
+            # 方案1：for循环一个个修改
+            # 方案2：重写ListSerializer的update方法
+            book_list = []
+            modify_data = []
+            for item in request.data:
+                pk = item.pop('id')
+                book = models.Book.objects.get(pk=pk)
+                book_list.append(book)
+                modify_data.append(item)
+            # 第一种方案 for循环实现
+            # for k, v in enumerate(modify_data):
+            #     serializer = serializers.BookModelSerializer(book_list[k], data=v)
+            #     serializer.is_valid(raise_exception=True)
+            #     serializer.save()  # 调ListSerializer的update方法 改到自己的
+            # return Response('succ')
+
+            # 第二种方案 重写ListSerializer的update()
+            serializer = serializers.BookModelSerializer(instance=book_list, data=modify_data, many=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()  # 调ListSerializer的update方法 改到自己的
+            return Response(serializer.data)
+
+    def delete(self, request, *args, **kwargs):
+        # 单个删除 和批量删除
+        pk = kwargs.get('pk')
+        pks = []
+        if pk:
+            # 单条删除
+            pks.append(pk)
+        else:
+            # 不管单条删除还是多条删除 都用多条删除
+            # 多条删除 {'pks': [1, 2, 3]}
+            pks = request.data.get('pks')
+        # 把id_delete设置为True
+        # res返回受影响的行数
+        res = models.Book.objects.filter(pk__in=pks, is_delete=False).update(is_delete=True)
+        if res:
+            return Response(data={'msg':'删除成功 删除%s条数据' % res})
+        return Response(data={'msg':'没有要删除的数据'})
+```
+
+## 序列化器
+
+```python
+from rest_framework import serializers
+from . import models
+
+
+# 写一个类 继承ListSerializer 重写update
+class BookListSerialzier(serializers.ListSerializer):
+    def create(self, validated_data):
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        print(instance)
+        print(validated_data)
+        # 保存数据
+        # self.child: 是BookModelSerializer对象
+        # return [self.child.update(对象, 字典) for attrs in validated_data]
+        return [self.child.update(instance[i], attrs) for i, attrs in enumerate(validated_data)]
+
+
+# 如果序列化的是数据库的表 尽量用ModelSerializer
+class BookModelSerializer(serializers.ModelSerializer):
+    # 关联字段显示name
+    # 第一种方案：source(只序列化可以 反序列化有问题)
+    # publish = serializers.CharField(source='publish.name')
+    # 第二种方案：models中写方法
+    class Meta:
+        # many=True的时候 用这个类实例化(源码)
+        list_serializer_class = BookListSerialzier
+        model = models.Book
+        # fields = '__all__'
+        # 联表嵌套深度 用得少
+        # depth = 0
+        # fields = ('name', 'price', 'authors', 'publish')
+        fields = ('id', 'name', 'price', 'authors', 'author_list', 'publish', 'publish_name')
+        read_only_fileds = ('publish_name', 'author_list')
+        extra_kwargs = {
+            'publish': {'write_only': True},
+            'authors': {'write_only': True}
+        }
+```
+
+### 序列化
+
+```python
+"""
+序列化输出结果
+由于设置 read_only 和 write_only字段
+序列化只展示read_only字段 不展示write_only字段
+反序列化需要给write_only字段 不需要给read_only字段
+"""
+[
+    {
+        "name": "Python",
+        "price": "131.88",
+        "author_list": [
+            {
+                "name": "minho",
+                "gender": "男"
+            },
+            {
+                "name": "kimi",
+                "gender": "女"
+            }
+        ],
+        "publish_name": "南京出版社"
+    },
+    {
+        "name": "js",
+        "price": "78.00",
+        "author_list": [
+            {
+                "name": "kimi",
+                "gender": "女"
+            }
+        ],
+        "publish_name": "东京出版社"
+    }
+]
+
+# source参数可以更改关系字段显示名字 
+# 但是反序列化会报错
+The `.create()` method does not support writable dotted-source fields by default.
+Write an explicit `.create()` method for serializer `api.serializers.BookModelSerializer`, or set `read_only=True` on dotted-source serializer fields.
+```
+
+### 反序列化
+
+```python
+"""
+反序列化传入json数据 提交post
+注意：此时反序列化关系字段为 authors[id] 和 publish(id)
+"""
+{
+    "name": "数据结构",
+    "price": "99.00",
+    "authors": [2],
+    "publish": 2
+}
 ```
 
 
