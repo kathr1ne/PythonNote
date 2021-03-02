@@ -3498,7 +3498,7 @@ class Author(BaseModel):
 
     
 class AuthorDetail(BaseModel):
-    models = models.CharField(max_length=11)
+    phone = models.CharField(max_length=11)
 
 
 """
@@ -3729,9 +3729,82 @@ Write an explicit `.create()` method for serializer `api.serializers.BookModelSe
 }
 ```
 
-
-
 # 分页器
+
+**drf内置三个分页器**
+
+```python
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.pagination import CursorPagination
+
+"""
+def默认配置
+  DEFAULT_PAGINATION_CLASS: None  # 默认不分页
+  PAGE_SIZE: None  # 每页显示数目 配置分页需要配置此参数才能生效
+"""
+
+# settings.py
+REST_FRAMEWORK = {
+    ...
+    'PAGE_SIZE': 2,
+}
+
+class BookView(ListAPIView):
+    # 局部配置分页
+    pagination_class = PageNumberPagination
+    queryset = models.Book.objects.all()
+    serializer_class = serializers.BookModelSerializer
+        
+# 如何使用APIView分页
+class BookView(APIView):
+    def get(self, request, *args, **kwargs):
+        # 实例化得到一个分页器对象
+        books = models.Book.objects.all()
+        page_cursor = MyPageNumberPagination()
+        # paginate_queryset进去筛选数据
+        books = page_cursor.paginate_queryset(books, request, view=self)
+        # 得到上一页下一页的url
+        next_url = page_cursor.get_next_link()
+        prev_url = page_cursor.get_previous_link()
+        print(next_url)
+        print(prev_url)
+        serializer = serializers.BookModelSerializer(books, many=True)
+        return Response(serializer.data)
+```
+
+## PageNumberPagination
+
+```python
+# 页码分页
+# 继承 并配置4个重要参数
+class MyPageNumberPagination(PageNumberPagination):
+    page_size = 2                   # 默认每页显示数量
+    page_query_param = 'aaa'        # /api/books2/?aaa=2 查询key
+    page_size_query_param = 'size'  # /api/books2/?aaa=2&size=5 每页显示条数
+    max_page_size = 5               # 每页最大显示数量 配合上一个参数
+```
+
+## LimitOffsetPagination
+
+```python
+# 偏移分页
+class MyLimitOffsetPagination(LimitOffsetPagination):
+    default_limit = 3              # 默认每页显示数量
+    limit_query_param = 'limit'    # 每页数量
+    offset_query_param = 'offset'  # 偏移位置
+    max_limit = 200                # limit最大可以设置数量
+```
+
+## CursorPagination
+
+```python
+# 效率高 只能选择往前走 或者往后走(只有上一页下一页)
+class MyCursorPagination(CursorPagination):
+    cursor_query_param = 'cursor'  # 查询参数
+    page_size = 3                  # 每页显示的条数
+    ordering = '-id'               # 排序字段 默认-created 没有该字段需要修改配置
+```
 
 # 文档生成
 
