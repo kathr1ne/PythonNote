@@ -2963,11 +2963,58 @@ class IsAuthenticatedOrReadOnly(BasePermission):
 可以对接口访问的频次进行限制 以减轻服务器压力
 ```
 
-## 自定义频率类
+## 自定义IP频率限制类
+
+### 继承BaseThrottle
+
+- **BaseThrottle源码分析**
+
+```python
+class BaseThrottle:
+    """
+    Rate throttling of requests.
+    """
+
+    def allow_request(self, request, view):
+        """
+        Return `True` if the request should be allowed, `False` otherwise.
+        """
+        # 该方法判断是否限次 没有限次可以请求返回True 限次了不可以请求返回False
+        raise NotImplementedError('.allow_request() must be overridden')
+
+    def get_ident(self, request):
+        """
+        Identify the machine making the request by parsing HTTP_X_FORWARDED_FOR
+        if present and number of proxies is > 0. If not use all of
+        HTTP_X_FORWARDED_FOR if it is available, if not use REMOTE_ADDR.
+        """
+        xff = request.META.get('HTTP_X_FORWARDED_FOR')
+        remote_addr = request.META.get('REMOTE_ADDR')
+        num_proxies = api_settings.NUM_PROXIES
+
+        if num_proxies is not None:
+            if num_proxies == 0 or xff is None:
+                return remote_addr
+            addrs = xff.split(',')
+            client_addr = addrs[-min(num_proxies, len(addrs))]
+            return client_addr.strip()
+
+        return ''.join(xff.split()) if xff else remote_addr
+
+    def wait(self):
+        """
+        Optionally, return a recommended number of seconds to wait before
+        the next request.
+        """
+        # 限次后调用 限制还需要等多久才能再次访问 返回等待时间的seconds
+        return None
+```
+
+- **自定制频率限制类**
 
 ```python
 """
-自定义的逻辑：
+自定义的逻辑
   1. 取出访问者IP
   2. 判断当前IP在不在访问字典里
      2.1 不在 添加进去 并且直接返回True 表示第一次访问
@@ -2977,41 +3024,48 @@ class IsAuthenticatedOrReadOnly(BasePermission):
      4.1 当列表小于3 说明一分钟以内访问不足三次 把当前时间插入列表第一个位置 返回True 顺序通过
      4.2 当大于等于3 说明一分钟内访问超过三次 返回False验证失败
 """
+
+# 频率限制 自定制
 import time
 from rest_framework.throttling import BaseThrottle
 
-class MyThrottle(BaseThrottle):
-    # 存用户访问信息的大字典
-    VISIT_RECORD = {}  
+class IPThrottle(BaseThrottle):
+    # 这里我们的访问字典放在了内存里 重启就会被清空
+    # 源码提供的放在了django缓存
+    VISIT_DIC = {}  # 定义成类属性 所有对象都用这一个
+
     def __init__(self):
-        self.history = None
-        
-    def allow_request(self,request,view):
-        # 根据ip进行频率限制 每分钟只能访问3次
-        # 1. 取出访问者ip
-        # print(request.META)
+        # 不能设置为类属性 每个IP的列表不一样
+        self.hisroty_list = []  # type: list
+
+    def allow_request(self, request, view):
         ip = request.META.get('REMOTE_ADDR')
         ctime = time.time()
-        # 2. 判断当前ip不在访问字典里 添加进去 并且直接返回True 表示第一次访问
-        if ip not in self.VISIT_RECORD:
-            self.VISIT_RECORD[ip] = [ctime, ]
+        if ip not in self.VISIT_DIC:
+            self.VISIT_DIC[ip] = [ctime]
             return True
-        self.history = self.VISIT_RECORD.get(ip)
-        # 3. 循环判断当前ip的列表 有值 并且当前时间减去列表的最后一个时间大于60s 把这种数据pop掉 这样列表中只有60s以内的访问时间
-        while self.history and ctime - self.history[-1] > 60:
-            self.history.pop()
-        # 4. 判断 当列表小于3 说明一分钟以内访问不足三次 把当前时间插入到列表第一个位置 返回True 顺利通过
-        # 5. 当大于等于3 说明一分钟内访问超过三次 返回False验证失败
-        if len(self.history) < 3:
-            self.history.insert(0, ctime)
+        # 当前访问者的时间列表拿出来
+        self.history_list = self.VISIT_DIC[ip]
+        # while ctime - history_list[-1] > 60:
+        #     history_list.pop()
+        while True:
+            if ctime - self.history_list[-1] > 60:
+                # 循环把时间列表最后一个与当前时间差大于60s的移除
+                self.history_list.pop()
+            else:
+                break  # 把全部大于60s的时间移除之后break
+        if len(self.history_list) < 3:  # 3 就是配置文件里面配置一分钟可以访问多少次
+            self.history_list.insert(0, ctime)
             return True
         else:
             return False
 
     def wait(self):
-        # 还剩多长时间能访问
+        # history_list = [第三次 第二次 第一次访问时间戳]
+        # 返回该IP还需要等待多少秒可以访问
         ctime = time.time()
-        return 60 - (ctime - self.history[-1])
+        return 60-(ctime - self.history_list[-1])
+
     
 # 使用
 1. 局部使用 在视图类里使用
@@ -3020,6 +3074,166 @@ class MyThrottle(BaseThrottle):
    REST_FRAMEWORK = {
        'DEFAULT_THROTTLE_CLASSES':['app01.utils.MyThrottles',]
    }
+```
+
+### 继承SimpleRateThrottle
+
+- **SimpleRateThrottle源码分析**
+
+```python
+class SimpleRateThrottle(BaseThrottle):
+    """
+    A simple cache implementation, that only requires `.get_cache_key()`
+    to be overridden.
+
+    The rate (requests / seconds) is set by a `rate` attribute on the View
+    class.  The attribute is a string of the form 'number_of_requests/period'.
+
+    Period should be one of: ('s', 'sec', 'm', 'min', 'h', 'hour', 'd', 'day')
+
+    Previous request information used for throttling is stored in the cache.
+    """
+    cache = default_cache
+    timer = time.time
+    cache_format = 'throttle_%(scope)s_%(ident)s'
+    scope = None
+    THROTTLE_RATES = api_settings.DEFAULT_THROTTLE_RATES
+
+    def __init__(self):
+        # 通过反射找rate
+        if not getattr(self, 'rate', None):
+            self.rate = self.get_rate()  # self.rate = '3/m'
+        # self.num_requests = 3
+        # self.duration = 60
+        self.num_requests, self.duration = self.parse_rate(self.rate)
+
+    def get_cache_key(self, request, view):
+        """
+        Should return a unique cache-key which can be used for throttling.
+        Must be overridden.
+
+        May return `None` if the request should not be throttled.
+        """
+        # 必须重写 返回谁 用什么做key
+        raise NotImplementedError('.get_cache_key() must be overridden')
+
+    def get_rate(self):
+        """
+        Determine the string representation of the allowed request rate.
+        """
+        if not getattr(self, 'scope', None):
+            msg = ("You must set either `.scope` or `.rate` for '%s' throttle" %
+                   self.__class__.__name__)
+            raise ImproperlyConfigured(msg)
+
+        try:
+            # 去配置文件取配置的scope值 '3/m'
+            return self.THROTTLE_RATES[self.scope]
+        except KeyError:
+            msg = "No default throttle rate set for '%s' scope" % self.scope
+            raise ImproperlyConfigured(msg)
+
+    def parse_rate(self, rate):
+        """
+        Given the request rate string, return a two tuple of:
+        <allowed number of requests>, <period of time in seconds>
+        """
+        if rate is None:
+            return (None, None)
+        num, period = rate.split('/')  # rate: '3/m' -> '3', 'm'
+        num_requests = int(num)
+        duration = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}[period[0]]  # period取字符串索引0 min:m mmmmm:m
+        return (num_requests, duration)  # (3, 60)
+
+    def allow_request(self, request, view):
+        """
+        Implement the check to see if the request should be throttled.
+
+        On success calls `throttle_success`.
+        On failure calls `throttle_failure`.
+        """
+        if self.rate is None:
+            return True
+
+        # 获取key(IP userID ...)
+        self.key = self.get_cache_key(request, view)
+        if self.key is None:
+            return True
+
+        # django缓存
+        # 1. 导包：from django.core.cache import cache
+        # 2. 添加缓存：cache.set(key, value, exp)
+        # 3. 获取缓存： cache.get(key, default_value)
+        # 初次访问缓存为空 self.history = [] 是存放时间的列表
+        self.history = self.cache.get(self.key, [])
+        # 获取当前时间 存到self.now
+        self.now = self.timer()
+
+        # Drop any requests from the history which have now passed the
+        # throttle duration
+        while self.history and self.history[-1] <= self.now - self.duration:
+            self.history.pop()
+        if len(self.history) >= self.num_requests:
+            return self.throttle_failure()
+        return self.throttle_success()
+
+    def throttle_success(self):
+        """
+        Inserts the current request's timestamp along with the key
+        into the cache.
+        """
+        self.history.insert(0, self.now)
+        self.cache.set(self.key, self.history, self.duration)
+        return True
+
+    def throttle_failure(self):
+        """
+        Called when a request to the API has failed due to throttling.
+        """
+        return False
+
+    def wait(self):
+        """
+        Returns the recommended next request time in seconds.
+        """
+        # 计算下一次访问需要等待的时间
+        if self.history:
+            remaining_duration = self.duration - (self.now - self.history[-1])
+        else:
+            remaining_duration = self.duration
+
+        available_requests = self.num_requests - len(self.history) + 1
+        if available_requests <= 0:
+            return None
+
+        return remaining_duration / float(available_requests)
+```
+
+- **继承SimpleRateThrottle自定义限制key**
+
+```python
+from rest_framework.throttling import SimpleRateThrottle
+
+class MyThrottle(SimpleRateThrottle):
+    """
+    SimpleRateThrottle 已经提供了其他方法 
+    只需要重写get_cache_key即可
+    """
+    scope = 'sss'  # scope配置限制的关键字
+
+    def get_cache_key(self, request, view):
+        # 该方法返回什么 就以什么为key -> 以key来限制访问频率 key对应的value是一个时间列表
+        # 这里返回客户端IP 就以IP限制访问次数
+        # 如果返回一个固定值 所有人都共有一个key的限制 return xxx
+        print("IP", request.META.get('REMOTE_ADDR'))
+        return request.META.get('REMOTE_ADDR') 
+    
+"""
+自定义频率限制(IP user_id)
+  1. 继承SimpleRateThrottle
+  2. 重写get_cache_key 返回什么 就以什么为key进行限制(最好唯一 key对应的值是一个时间列表)
+  3. scope字段 需要与setting中对应 配置访问频率限制 'scope_name': '5/m'
+"""
 ```
 
 ## 内置的频率限制
@@ -3135,8 +3349,6 @@ class ScopedRateThrottle(SimpleRateThrottle):
             'ident': ident
         }
 ```
-
-**其余内置类以及详细源码 参考drf.throttling.py**
 
 ## 使用
 
@@ -3653,7 +3865,7 @@ class BookModelSerializer(serializers.ModelSerializer):
     # 关联字段显示name
     # 第一种方案：source(只序列化可以 反序列化有问题)
     # publish = serializers.CharField(source='publish.name')
-    # 第二种方案：models中写方法
+    # 第二种方案：models中写方法 也可以使用SerializerMethodField字段
     class Meta:
         # many=True的时候 用这个类实例化(源码)
         list_serializer_class = BookListSerialzier
@@ -3729,6 +3941,26 @@ Write an explicit `.create()` method for serializer `api.serializers.BookModelSe
 }
 ```
 
+## 总结
+
+```python
+# book其实是5个表(自动生成多对多关系表)
+  - 一对一关系 其实是ForeignKey uniqe=True
+  - on_delete: 级联删除 设置为空 什么都不干 设置成默认值
+  - 联合索引 联合唯一
+  - 日期类型参数：auto_now_add 和 auto_now
+  - 基表：abstract
+
+# book
+  - 单条查询 批量查询(判断kwargs.get('pk')处理)
+  - 单条新增 批量新增(生成序列化对象 many=True -> ListSerializer -> 循环掉self.child.save)
+  - 单条修改 批量修改(自定义BookListSerializer 继承ListSerializer: 重写update方法 因为ListSerizlizer没有实现)
+           class Meta:
+               # many=True的时候 用这个类实例化(源码)
+               list_serializer_class = BookListSerialzier  # 关联自定义BookListSerializer
+  - 单条删除 批量删除(is_delete) 同一用批量删除 pk__in=[1, 2, 3]
+```
+
 # 分页器
 
 **drf内置三个分页器**
@@ -3776,7 +4008,7 @@ class BookView(APIView):
 ## PageNumberPagination
 
 ```python
-# 页码分页
+# 页码分页 基本分页
 # 继承 并配置4个重要参数
 class MyPageNumberPagination(PageNumberPagination):
     page_size = 2                   # 默认每页显示数量
@@ -3806,9 +4038,295 @@ class MyCursorPagination(CursorPagination):
     ordering = '-id'               # 排序字段 默认-created 没有该字段需要修改配置
 ```
 
-# 文档生成
+# 自动生成接口文档
+
+```python
+# drf可以自动帮助我们生成接口文档
+# 接口文档以网页的方式呈现
+# 自动接口文档生成的是继承自 APIView 及其子类的视图 ** 
+
+# 额外了解：swagger
+```
+
+## 安装coreapi
+
+```python
+# drf生成接口文档需要coreapi库的支持
+pip install coreapi
+```
+
+## 路由配置
+
+```python
+# 配置路由
+from django.urls import path
+from rest_framework.documentation import include_docs_urls
+
+urlpatterns = [
+    ...
+    path('docs/', include_docs_urls(title='API文档'))
+]
+
+# 报错: AttributeError: 'AutoSchema' object has no attribute 'get_link'
+# 在settings.py添加配置
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
+}
+```
+
+##  文档描述说明的定义位置
+
+### 单一方法的视图
+
+```python
+# 单一方法的视图 可以直接使用类视图的文档字符串
+class BookListView(ListAPIView):
+    """返回所有图书信息"""
+```
+
+### 多个方法的视图
+
+```python
+# 包含多个方法的视图 在类视图的文档字符串中 分开方法定义
+class BookListView(ListAPIView):
+    """
+    get:
+    返回所有图书信息
+    
+    post:
+    新增图书
+    """
+```
+
+### 视图集ViewSet
+
+```python
+# 对于视图集 仍在类视图的文档字符串中分开定义 但是应该使用action名称区分
+# 视图及ViewSet中的retrieve名称 在接口文档网站中叫做read
+# 参数的Description需要在模型类或序列化类的字段中以help_text选项定义
+# verbose_name help_text
+class BookListView(ModelViewSet):
+    """
+    list:
+    返回图书列表数据
+    
+    retrieve:
+    返回图书详情数据
+    
+    latest:
+    返回最新的图书数据
+    
+    read:
+    修改图书的阅读量
+    """
+```
 
 # JWT认证
 
+[JsonWebToken入门教程](http://www.ruanyifeng.com/blog/2018/07/json_web_token-tutorial.html)
 
+```python
+在用户注册或登录后 我们想记录用户的登录状态 或者为用户创建身份认证的凭证 我们不在使用Session认证机制 而是用Json Web Token(本质就是token)认证机制
+
+"""
+JsonWebToken 是为了在网络应用环境间传递声明而执行的一种基于JSON的开放标准(RFE 7519) 该token被设计为紧凑且用于分布式站点的单点登录(SSO)场景 
+JWT的声明一般被用来在身份提供者和服务者间传递被认证的用户身份信息 以便于从资源服务器获取资源 也可以额外的增加一些其他业务逻辑所必须的声明信息 该token页可以直接被用于认证 也可被加密
+
+不能被篡改 但是你可以拿出来用 只要没有你过期 -> 爬虫
+"""
+```
+
+## JWT数据结构
+
+```python
+# 三段信息
+Header.Payload.Signature
+
+"""
+Header    -  头部
+Payload   -  负载
+Signature - 签名
+"""
+
+# 原理
+"""
+1. JWT分三段式：Header.Payload.Signature
+2. 头和体是可逆加密 让服务器可以反解出user对象 签名是不可逆加密 保证整个token的安全性
+3. 头体签名有三部分 都是采用json格式的字符串进行加密 可逆加密一般采用base64算法 不可逆加密一般采用hash(md5)算法
+4. Header中的内容是基本信息：公司信息 项目组信息 token采用的加密方式信息
+5. Payload中的内容是关键信息：用户主键 用户名 签发时客户端信息(设备号 地址) 过期时间
+6. Signature中的内容时安全信息：头的加密结果 + 体的加密结果 + 服务器不对外公开的安全码进行加密
+"""
+```
+
+### Header
+
+```python
+# Header 部分是一个JSON 对象 描述JWT的元数据 通常是下面的样子:
+{
+  "alg": "HS256",
+  "typ": "JWT"
+}
+
+"""
+上面代码中 
+  alg属性表示签名的算法(algorithm) 默认是 HMAC SHA256(写成 HS256)
+  typ属性表示这个令牌(token) 的类型(type) JWT令牌统一写为JWT
+
+  最后 将上面的 JSON对象使用 Base64URL算法 转成字符串
+"""
+```
+
+### Payload
+
+```python
+# Payload部分也是一个JSON对象 用来存放实际需要传递的数据 JWT规定了7个官方字段 供选用
+iss (issuer)：签发人
+exp (expiration time)：过期时间
+sub (subject)：主题
+aud (audience)：受众
+nbf (Not Before)：生效时间
+iat (Issued At)：签发时间
+jti (JWT ID)：编号
+
+# 除了官方字段 你还可以在这个部分定义私有字段 比如：
+{
+  "sub": "1234567890",
+  "name": "John Doe",
+  "admin": true
+}
+
+"""
+注意 JWT默认是不加密的 任何人都可以读到 所以不要把秘密信息放在这个部分
+这个JSON对象也要使用 Base64URL算法 转成字符串
+"""
+```
+
+### Signature
+
+```python
+"""
+Signature 部分是对前两部分的签名 防止数据篡改
+
+  首先 需要指定一个密钥(secret) 这个密钥只有服务器才知道 不能泄露给用户
+  然后 用Header里面指定的签名算法(默认是 HMAC SHA256) 按照下面的公式产生签名
+"""
+HMACSHA256(
+  base64UrlEncode(header) + "." +
+  base64UrlEncode(payload),
+  secret)
+
+# 算出签名以后 把Header Payload Signature三个部分拼成一个字符串 每个部分之间用"点"(.)分隔 就可以返回给用户
+```
+
+### Base64URL
+
+```python
+"""
+前面提到 Header和Payload串型化的算法是 Base64URL 这个算法跟Base64算法基本类似 但有一些小的不同
+
+JWT 作为一个令牌(token) 有些场合可能会放到URL
+  比如 api.example.com/?token=xxx
+  
+Base64有三个字符 -> + / =  在URL里面有特殊含义 所以要被替换掉 
+  =被省略
+  +替换成-
+  /替换成_ 
+  
+这就是 Base64URL算法
+"""
+```
+
+### 检验
+
+```python
+"""
+1. 将token按 . 拆分为三个字符串 第一段：头加密字符串 一般不需要做任何处理
+2. 第二段 体加密字符串 要反解出用户主键 通过主键从User表中就能得到登录用户 过期时间和设备信息都是安全信息 确保token没有过期 且是同一设备来的
+3. 再用第一段 + 第二段 + 服务器安全码 不可逆hash(md5等)加密 与第三段签名字符串进行碰撞校验 通过后才能代表第二段校验得到的user对象就是合法的登录用户
+"""
+```
+
+## DRF项目的JWT认证开发流程
+
+```python
+"""
+1. 用账号密码访问登录接口 登录接口逻辑中掉用签发token算法 得到token 返回给客户端 客户端自己存到cookies中
+
+2. 校验token的算法应该写在认证类(在认证类中调用) 全局配置给认证组件 所有视图函数类请求 都会进行认证校验 所以请求带token过来 就会反解出user对象 在视图类中用request.user就能访问登录的用户
+
+注：登录接口需要做 认证 + 权限 两个局部禁用
+"""
+```
+
+### drf-jwt的安装和简单使用
+
+```python
+# 官网
+https://jpadilla.github.io/django-rest-framework-jwt/
+    
+# 第三方写好的
+pip install djangorestframework-jwt
+
+# 使用
+"""
+1. 基于django的Auth模块
+2. 使用自己的认证模块
+"""
+```
+
+#### 继承DjangoUser表扩展
+
+```python
+"""
+继承django 原生的User表 最好一开始就使用
+"""
+# 继承AbstractUser表 扩展字段
+from django.db import models
+from django.contrib.auth.models import AbstractUser
+
+class User(AbstractUser):
+    phone = models.CharField(max_length=11)
+    icon = models.ImageField(upload_to='icon')  # ImageField依赖pillow模块
+    
+# settings.py配置
+# 扩展django自带的user表 
+AUTH_USER_MODEL = 'api.User'
+    
+# 配置头像相关
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# 执行数据库迁移
+# 创建超级用户 进行测试
+
+# 国际化
+LANGUAGE_CODE = 'zh-Hans'
+TIME_ZONE = 'Asia/Shanghai'
+USE_I18N = True
+USE_L10N = True
+USE_TZ = False  # 时区
+```
+
+#### 简单使用
+
+```python
+from rest_framework_jwt.views import JSONWebTokenAPIView  # 基类 继承APIView
+
+# 都继承JSONWebTokenAPIView
+from rest_framework_jwt.views import ObtainJSONWebToken
+from rest_framework_jwt.views import RefreshJSONWebToken
+from rest_framework_jwt.views import VerifyJSONWebToken
+
+
+# urls.py配置即可
+from django.contrib import admin
+from django.urls import path
+from rest_framework_jwt.views import ObtainJSONWebToken
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    path('login/', ObtainJSONWebToken.as_view()),
+]
+```
 
