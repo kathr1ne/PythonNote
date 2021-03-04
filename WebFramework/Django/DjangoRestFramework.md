@@ -4259,7 +4259,7 @@ Base64有三个字符 -> + / =  在URL里面有特殊含义 所以要被替换�
 """
 ```
 
-### drf-jwt的安装和简单使用
+### 第三方JWT的使用
 
 ```python
 # 官网
@@ -4287,7 +4287,7 @@ from django.contrib.auth.models import AbstractUser
 
 class User(AbstractUser):
     phone = models.CharField(max_length=11)
-    icon = models.ImageField(upload_to='icon')  # ImageField依赖pillow模块
+    icon = models.ImageField(upload_to='icon', default='icon/default.png')  # ImageField依赖pillow模块
     
 # settings.py配置
 # 扩展django自带的user表 
@@ -4296,6 +4296,14 @@ AUTH_USER_MODEL = 'api.User'
 # 配置头像相关
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# 开发MEDIA文件
+from django.views.static import serve  # django内置给你的一个视图函数 类似默认开了static静态文件的路由
+from django,urls import re_path
+from django.conf import settings  # 以后取配置文件都用这个 内置 比较全
+
+urlpatterns = [
+    re_path('media/?P<path>.*', serve, {'document_root': settings.MEDIA_ROOT})
+]
 
 # 执行数据库迁移
 # 创建超级用户 进行测试
@@ -4308,7 +4316,7 @@ USE_L10N = True
 USE_TZ = False  # 时区
 ```
 
-#### 简单使用
+#### 登录认证简单使用
 
 ```python
 from rest_framework_jwt.views import JSONWebTokenAPIView  # 基类 继承APIView
@@ -4319,14 +4327,286 @@ from rest_framework_jwt.views import RefreshJSONWebToken
 from rest_framework_jwt.views import VerifyJSONWebToken
 
 
-# urls.py配置即可
+# 1. urls.py配置路由即可简单快速使用登录接口获取jwt token
 from django.contrib import admin
 from django.urls import path
 from rest_framework_jwt.views import ObtainJSONWebToken
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('login/', ObtainJSONWebToken.as_view()),
+    path('login/', ObtainJSONWebToken.as_view()),  # 正确登录获取jwt token
 ]
+
+
+# 2. views.py 局部使用jwt认证
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+
+
+class BookBiew(APIView):
+    authentication_classes = [JSONWebTokenAuthentication]  # 局部配置jwt认证
+
+    def get(self, request):
+        print(request.user, request.user.email)
+        print(request.auth)
+        return Response('ok')
+
+
+# 3. 在请求headers带认证参数 否则为匿名用户AnonymousUser(return None)
+Authorization JWT jwt_value
+
+"""
+注意：这个时候 如果请求headers中不带认证参数 源码直接return None 相当于匿名用户AnonymousUser访问
+     这个时候 如果视图函数允许匿名用户访问 那么此时不带jwt token也可以访问成功
+     
+可以通过通过认证类：JSONWebTokenAuthentication 和权限类：IsAuthenticated 来控制用户登录以后才能访问某些接口
+如果用户不等录就可以访问 只需要把权限类：IsAuthenticated去掉即可
+"""
+
+# 4. 禁止匿名用户访问
+from rest_framework.permissions import IsAuthenticated
+
+class BookBiew(APIView):
+    authentication_classes = [JSONWebTokenAuthentication]
+    """配置权限 IsAuthenticated 只允许认证通过的用户访问"""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response('ok')
 ```
+
+#### 自定制JWT认证去除headers前缀
+
+```python
+# 自定义重写jwt认证类 重写get_jwt_value方法 去掉认证前缀 JWT token.xx.xx
+from rest_framework import HTTP_HEADER_ENCODING
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+
+class MyToken(JSONWebTokenAuthentication):
+    def get_jwt_value(self, request):
+        auth = request.META.get('HTTP_AUTHORIZATION', b'')
+        if isinstance(auth, str):
+            auth = auth.encode(HTTP_HEADER_ENCODING)
+        return auth
+    
+# 视图函数局部配置
+authentication_classes = [MyToken]
+
+# 除此之外 还可以修改前缀 settings.py
+JWT_AUTH = {
+    # 'JWT_AUTH_HEADER_PREFIX': 'JWT',  JWT自带配置 认证请求headrs需要带前缀
+    'JWT_AUTH_HEADER_PREFIX': 'aaa',  # aaa token.xx.xx
+}
+```
+
+#### 手动签发JWT
+
+```python
+# 可以拥有原生登录基于Model类user对象签发JWT
+from rest_framework_jwt.settings import api_settings
+
+jwt_payload_handler = api_settings.JWT_PAYLOAD_HANDLER
+jwt_encode_handler = api_settings.JWT_ENCODE_HANDLER
+
+palyload = jwt_payload_handler(user)  # 把user传入 得到payload
+token = jwt_encode_handler(palyload)  # 把payload传入 得到token
+
+# 把三段信息解析出payload 判断认证是否篡改 是否过期
+# 通过payload转成user对象
+payload = jwt_decode_handler(jwt_value)
+```
+
+#### 登录接口返回数据格式
+
+```python
+"""
+控制登录接口返回的数据格式
+  第一种方案：自己写登录接口
+  第二种方案：用内置
+"""
+
+# jwt的配置响应数据格式
+'JWT_RESPONSE_PAYLOAD_HANDLER': 'rest_framework_jwt.utils.jwt_response_payload_handler'
+ 
+# jwt_response_payload_handler源码
+# 可以重写该方法 控制返回数据的格式(返回什么 前端登录接口就能看到什么)
+def jwt_response_payload_handler(token, user=None, request=None):
+    return {
+        'token': token
+    }
+
+"""自定义控制登录jwt登录接口返回数据格式"""
+# 1. 重写jwt_response_payload_handler方法
+def jwt_response_payload_handler(token, user=None, request=None):
+    return {
+        'token': token,
+        'msg': '登录成功',
+        'status': 100,
+        'username': user.username
+    }
+
+# 2. 配置 settings.py
+JWT_AUTH = {
+    # 'JWT_AUTH_HEADER_PREFIX': 'JWT',  JWT自带配置 认证请求headrs需要带前缀
+    'JWT_AUTH_HEADER_PREFIX': 'aaa',
+    'JWT_RESPONSE_PAYLOAD_HANDLER': 'api.utils.jwt_response_payload_handler',  # JWT控制返回数据格式
+}
+```
+
+**返回结果示例**
+
+```python
+{
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoxLCJ1c2VybmFtZSI6Im1pbmhvIiwiZXhwIjoxNjE0ODMwNzgzLCJlbWFpbCI6Ijk3NDMxMTEwQHFxLmNvbSJ9.90l3F4oTT0gWfcgdc0LH9euZYygyWinHF4Ec-kwra-U",
+    "msg": "登录成功",
+    "status": 100,
+    "username": "minho"
+}
+```
+
+### 基于JWT自定制认证类
+
+#### 基于BaseAuthentication
+
+```python
+import jwt
+from rest_framework.authentication import BaseAuthentication
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_jwt.utils import jwt_decode_handler
+from api import models
+
+class MyJwtAuthentication(BaseAuthentication):
+    def authenticate(self, request):
+        jwt_value = request.META.get('HTTP_AUTHORIZATION')
+        if jwt_value:
+            try:
+                # jwt提供了三段token 取出用payload的方法 并且有校验功能
+                payload = jwt_decode_handler(jwt_value)
+            except jwt.ExpiredSignature:
+                raise AuthenticationFailed('签名过期')
+            except jwt.InvalidTokenError:
+                raise AuthenticationFailed('用户非法')
+            except Exception as exc:
+                raise AuthenticationFailed(str(exc))
+            # 因为payload就是用户信息字典
+            # print(payload)
+            # return payload, jwt_value
+            # 需要得到user对象
+            # 1. 去数据库查
+            # user = models.User.objects.get(pk=payload.get('user_id'))
+            # 2. 不查库自己转 速度块一些
+            user = models.User(id=payload['user_id'], username=payload['username'])
+            return user, jwt_value
+
+        # 没有带认证信息 直接抛异常
+        raise AuthenticationFailed('你没有携带认证信息')
+```
+
+#### 基于BaseJSONWebTokenAuthentication
+
+```python
+import jwt
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_jwt.authentication import BaseJSONWebTokenAuthentication
+from rest_framework_jwt.utils import jwt_decode_handler
+
+class MyJwtAuthentication(BaseJSONWebTokenAuthentication):
+    def authenticate(self, request):
+        jwt_value = request.META.get('HTTP_AUTHORIZATION')
+        if jwt_value:
+            try:
+                # jwt提供了三段token 取出用payload的方法 并且有校验功能
+                payload = jwt_decode_handler(jwt_value)
+            except jwt.ExpiredSignature:
+                raise AuthenticationFailed('签名过期')
+            except jwt.InvalidTokenError:
+                raise AuthenticationFailed('用户非法')
+            except Exception as exc:
+                raise AuthenticationFailed(str(exc))
+            # 继承BasejsonWeb 直接调用下面方法获取user对象
+            user = self.authenticate_credentials(payload)
+            return user, jwt_value
+
+        # 没有带认证信息 直接抛异常
+        raise AuthenticationFailed('你没有携带认证信息')
+```
+
+### 多方式登录
+
+```PYTHON
+# 使用用户名 手机号 邮箱 都可以登录
+# 前端需要传的数据格式
+{
+    "username": "lqz/13334449988/123@qq.com",
+    "password": "123456"
+}
+
+# serializers.py
+import re
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+from rest_framework_jwt.settings import api_settings
+from api import models
+
+jwt_payload_handler = api_settings.JWT_PAYLOAD_HANDLER
+jwt_encode_handler = api_settings.JWT_ENCODE_HANDLER
+
+class LoginModelSerialzier(serializers.ModelSerializer):
+    username = serializers.CharField()
+    class Meta:
+        model = models.User
+        fields = ['username', 'password']
+
+    def validate(self, attrs):
+        # 在这写逻辑
+        username = attrs.get('username')  # 用户名有三种方式
+        password = attrs.get('password')
+        # 通过判断username数据不同 查询字段不一样
+        # 正则匹配 如果是手机号
+        if re.match('^1[3-9][0-9]{9}$', username):
+            user = models.User.objects.filter(phone=username).first()
+        elif re.match('^.+@.+$', username):  # 邮箱
+            user = models.User.objects.filter(email=username).first()
+        else:
+            user = models.User.objects.filter(username=username).first()
+        if user:  # 存在用户
+            # 校验密码 因为是密文 要用check_password
+            if user.check_password(password):
+                # 签发token
+                payload = jwt_payload_handler(user)  # user传入 得到payload
+                token = jwt_encode_handler(payload)  # payload传入 得到token
+                # self.token = token  推荐使用context
+                self.context['token'] = token
+                self.context['username'] = user.username
+                return attrs
+            else:
+                raise ValidationError('密码错误')
+        raise ValidationError('用户不存在')
+
+# views.py
+from rest_framework.viewsets import ViewSet
+from api import serializers
+
+# class Login2View(ViewSetMixin, APIView):
+class Login2View(ViewSet):
+    """这是登录接口"""
+    # def post(self, request):  # 不写post 直接写login?
+    #     pass
+
+    def login(self, request, *args, **kwargs):
+        # 1. 需要有个序列化的类
+        # 2. 生成序列化类对象
+        serializer = serializers.LoginModelSerialzier(data=request.data)
+        # 3. 调用序列化对象的is_valid
+        serializer.is_valid(raise_exception=True)
+        token = serializer.context.get('token')
+        # 4. return
+        return Response({'status':100, 'msg':'success', 'token': token, 'username': serializer.context.get('username')})
+
+# urls.py
+path('login2/', views.Login2View.as_view({'post':'login'}))
+```
+
+# 基于Django的权限控制
 
