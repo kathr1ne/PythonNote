@@ -4608,5 +4608,56 @@ class Login2View(ViewSet):
 path('login2/', views.Login2View.as_view({'post':'login'}))
 ```
 
-# 基于Django的权限控制
+### 配置过期时间
+
+```python
+# 过期时间
+'JWT_EXPIRATION_DELTA': datetime.timedelta(seconds=300)
+    
+# 配置 settings.py
+import datetime
+
+JWT_AUTH = {
+    # 过期时间手动配置
+    'JWT_EXPIRATION_DELTA': datetime.timedelta(days=7),
+}
+```
+
+# RBAC
+
+```python
+# RBAC： 基于角色的访问控制 用在公司内部系统居多
+# Django的Auth体系 就是内置了一套RBAC的权限系统
+
+# 权限三表
+User    Group    Permisson
+    多对多     多对多
+    
+# 权限六表
+User    Group    Permisson
+    UG关系表    GP关系表
+正常5个就够：Django多一个 UP关系表 单独直接给每一个人加权限
+```
+
+## DjangoAuth 权限6表
+
+```python
+"""
+# 后台的权限控制(公司内部系统 crm/erp/协同平台)
+  auth_user        # 用户表
+  auth_group       # 用户组
+  auth_permission  # 权限表
+
+  auth_user_groups            # 用户 组 关系表 多对多
+  auth_group_permissions      # 组 权限 关系表 多对多
+  auth_user_user_permissions  # 用户 权限 关系表 多对多
+
+# 前台(主站) 需要用三大认证
+  - 认证
+  - 权限
+  - 频率
+  
+后台管理用户 和前台注册用户 可以是两个user表 也可以共用一个
+"""
+```
 
